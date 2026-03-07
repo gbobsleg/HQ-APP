@@ -1,4 +1,5 @@
 {
-    "version": "2.1.0",
-    "defaultBranch": "main"
-  }
+    "version": "3.0.0",
+    "defaultBranch": "main",
+    "publishedAt": "2025-03-07"
+}
