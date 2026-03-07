@@ -350,8 +350,6 @@ function app() {
 
         deployLogs: [],
         deployRunning: false,
-        migrationRunning: false,
-        migrationLogs: [],
         releases: [],
         releasesLoading: false,
         releasesError: '',
@@ -427,37 +425,6 @@ function app() {
                 this.deployLogs.push('[ERROR] ' + (e.message || e));
             } finally {
                 this.deployRunning = false;
-            }
-        },
-
-        async runV2MigrationClick() {
-            if (this.migrationRunning) return;
-            if (!this.rootHandle) {
-                await this.connectOrRefresh(true);
-                if (!this.rootHandle) {
-                    this.notify('Dossier racine non sélectionné.', 'error');
-                    return;
-                }
-            }
-            if (typeof window.runV2Migration !== 'function') {
-                this.notify('Script de migration V2 non chargé.', 'error');
-                return;
-            }
-            this.migrationRunning = true;
-            this.migrationLogs = [];
-            try {
-                var result = await window.runV2Migration(this.rootHandle);
-                this.migrationLogs = result.logs || [];
-                if (result.success) {
-                    this.notify('Migration V2.0.0 terminée.');
-                } else {
-                    this.notify('Migration terminée avec des erreurs. Voir le détail ci-dessous.', 'error');
-                }
-            } catch (e) {
-                this.migrationLogs.push('[ERREUR] ' + (e.message || String(e)));
-                this.notify('Migration échouée.', 'error');
-            } finally {
-                this.migrationRunning = false;
             }
         },
 

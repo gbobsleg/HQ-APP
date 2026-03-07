@@ -11,7 +11,6 @@
     <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="js/GridRepository.js"></script>
     <script src="js/FileSystemManager.js"></script>
-    <script src="js/migration_v2.js"></script>
     <script src="js/ScoringEngine.js"></script>
     <script src="js/ReviewEngine.js"></script>
     <script src="js/DashboardChartsView.js"></script>
@@ -122,21 +121,6 @@
                     </div>
                 </template>
             </div>
-        </div>
-
-        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-10">
-            <h2 class="text-lg font-black text-amber-900 mb-2">Outils de Maintenance / Migration des données</h2>
-            <p class="text-sm text-amber-800 mb-4">Après une mise à jour vers la V2.0.0, exécutez une fois la migration pour convertir les données locales (agents, config, grilles, campagnes) au format V2.</p>
-            <div class="flex flex-wrap gap-3 items-center mb-4">
-                <button type="button"
-                        @click="runV2MigrationClick()"
-                        :disabled="migrationRunning || !rootHandle"
-                        class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-6 py-3 rounded-xl shadow transition-colors">
-                    <span x-text="migrationRunning ? 'Migration en cours...' : 'Lancer la migration V2.0.0'"></span>
-                </button>
-                <span x-show="!rootHandle" class="text-sm text-amber-700">Sélectionnez d’abord le dossier racine (depuis une autre page ou en rechargeant).</span>
-            </div>
-            <div x-show="migrationLogs.length > 0" class="mt-3 p-4 bg-white border border-amber-200 rounded-xl font-mono text-xs text-slate-700 whitespace-pre-wrap max-h-48 overflow-y-auto" x-text="migrationLogs.join('\n')"></div>
         </div>
 
         <div class="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-700 mb-10">
