@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Documentation | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>html { scrollbar-gutter: stable; }</style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+    <div class="max-w-3xl mx-auto px-6 py-10">
+        <p class="mb-6">
+            <a href="admin.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Hub</a>
+        </p>
+        <h1 class="text-3xl font-black text-indigo-900 mb-8">Guide HQ-APP</h1>
+
+        <nav id="sommaire" class="mb-12 p-4 bg-white rounded-2xl border border-slate-100 shadow-sm scroll-mt-4">
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Sommaire</p>
+            <ul class="list-disc list-inside space-y-1">
+                <li><a href="#demarrage" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Démarrage</a></li>
+                <li><a href="#pilotage" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Pilotage</a></li>
+                <li><a href="#saisie-eval" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Saisie – Évaluations</a></li>
+                <li><a href="#saisie-bilan" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Saisie – Bilan</a></li>
+                <li><a href="#dashboard" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Dashboard</a></li>
+                <li><a href="#admin-campagnes" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Campagnes</a></li>
+                <li><a href="#admin-grille" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Grille</a></li>
+                <li><a href="#admin-referentiels" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Référentiels et paramètres</a></li>
+                <li><a href="#admin-duree" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Durée des communications</a></li>
+                <li><a href="#admin-offres" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Types d'offres</a></li>
+                <li><a href="#admin-prompt" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Prompt IA</a></li>
+                <li><a href="#admin-mise-a-jour" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Paramètres système</a></li>
+            </ul>
+        </nav>
+
+        <section id="demarrage" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Démarrage</h2>
+            <p class="text-slate-600 mb-3">Au premier lancement, sélectionnez le <strong>dossier racine</strong> du projet (celui qui contient <code class="text-xs bg-slate-200 px-1 rounded">App_Sources</code> et <code class="text-xs bg-slate-200 px-1 rounded">Campagnes</code>).</p>
+            <p class="text-slate-600 mb-3">L'application utilise l'API File System. <strong>Chrome ou Edge</strong> sont requis ; Firefox n'est pas supporté.</p>
+            <p class="text-slate-600">Pour changer de dossier : cliquez sur le chemin affiché en bas de page puis « MODIFIER ».</p>
+        </section>
+
+        <section id="pilotage" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Pilotage</h2>
+            <p class="text-slate-600 mb-3">Vue Kanban en 3 colonnes : <strong>En cours d'évaluation</strong>, <strong>À bilanter</strong>, <strong>Clôturés</strong>.</p>
+            <p class="text-slate-600 mb-3">Filtrez par superviseur ou cherchez un agent par nom/site. Le pourcentage d'avancement s'affiche en haut à droite.</p>
+            <p class="text-slate-600 mb-3">Depuis « En cours » : cliquez <strong>+ Évaluer</strong> pour saisir les notes. Depuis « À bilanter » : <strong>Traiter le bilan</strong> pour rédiger et envoyer le bilan qualité.</p>
+            <p class="text-slate-600">Un agent « Clôturé » peut être remis à bilanter via le lien dédié sur sa carte.</p>
+        </section>
+
+        <section id="saisie-eval" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Saisie – Évaluations</h2>
+            <p class="text-slate-600 mb-3">Renseignez Agent, Campagne, Offre, Date. La grille de critères s'affiche : attribuez une note (0–10) et un commentaire par critère. Survolez les libellés pour voir les barèmes.</p>
+            <p class="text-slate-600 mb-3">Le <strong>commentaire global</strong> peut être généré par IA (bouton dédié) ou saisi manuellement.</p>
+            <p class="text-slate-600">Enregistrez pour créer l'évaluation. Plusieurs évaluations par agent sont gérées via les onglets (+ pour en ajouter).</p>
+        </section>
+
+        <section id="saisie-bilan" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Saisie – Bilan</h2>
+            <p class="text-slate-600 mb-3">Onglet <strong>Bilan</strong> : synthèse des évaluations. Un <strong>brouillon</strong> peut être enregistré pour reprendre plus tard.</p>
+            <p class="text-slate-600 mb-3">Le bilan est généré par IA à partir des évaluations. Vous pouvez le modifier avant envoi.</p>
+            <p class="text-slate-600">Une fois envoyé, l'agent passe en colonne « Clôturés ». <strong>Remettre à bilanter</strong> le replace dans « À bilanter ».</p>
+        </section>
+
+        <section id="dashboard" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Dashboard</h2>
+            <p class="text-slate-600 mb-3">Statistiques par campagne : KPIs, graphiques, répartition par site et offre.</p>
+            <p class="text-slate-600">Utilisez les filtres <strong>Site</strong> et <strong>Offre</strong> pour affiner les données.</p>
+        </section>
+
+        <section id="admin-campagnes" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Campagnes</h2>
+            <p class="text-slate-600 mb-3">Créez des dossiers de campagne (ex. <code class="text-xs bg-slate-200 px-1 rounded">2026 S1</code>, <code class="text-xs bg-slate-200 px-1 rounded">2026 S2</code>) qui apparaîtront dans la sidebar Pilotage et Dashboard.</p>
+            <p class="text-slate-600">Chaque dossier contient les évaluations et bilans des agents pour la période.</p>
+        </section>
+
+        <section id="admin-grille" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Grille</h2>
+            <p class="text-slate-600 mb-3">La Grille est accessible depuis le hub admin via <strong>Référentiels et paramètres</strong>.</p>
+            <p class="text-slate-600 mb-3">Modifiez les <strong>catégories</strong> et <strong>critères</strong> de la grille d'évaluation. Glissez-déposez pour réordonner.</p>
+            <p class="text-slate-600 mb-3">Pour chaque critère : libellé, barème (min/max), tooltip affiché au survol lors de la saisie.</p>
+            <p class="text-slate-600">Pensez à <strong>forcer la sauvegarde</strong> après vos modifications.</p>
+        </section>
+
+        <section id="admin-referentiels" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Référentiels et paramètres</h2>
+            <p class="text-slate-600 mb-3">Depuis le hub admin, la tuile <strong>Référentiels et paramètres</strong> ouvre une page avec six modules : <strong>Agents</strong>, <strong>Superviseurs</strong>, <strong>Sites</strong>, <strong>Durée des communications</strong>, <strong>Types d'offres</strong>, <strong>Grille</strong>.</p>
+            <p class="text-slate-600 mb-3">Agents, Superviseurs et Sites : gestion des listes de référence (profils, débriefeurs, sites). Durée des communications et Types d'offres : paramètres utilisés dans les formulaires. La Grille : catégories, critères, barèmes et tooltips de la grille d'évaluation.</p>
+            <p class="text-slate-600">Chaque module ouvre une page dédiée (sections détaillées ci-dessous).</p>
+        </section>
+
+        <section id="admin-duree" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Durée des communications</h2>
+            <p class="text-slate-600 mb-3">Définissez les <strong>seuils de durée</strong> (court / moyen) pour les communications. En dessous du premier seuil = badge vert (courte), entre les deux seuils = badge orange (moyenne), au-dessus du second = badge rouge (longue).</p>
+            <p class="text-slate-600">Ces seuils sont utilisés pour afficher les indicateurs de durée dans les vues Pilotage et Saisie.</p>
+        </section>
+
+        <section id="admin-offres" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Types d'offres</h2>
+            <p class="text-slate-600">Liste des <strong>offres</strong> (Employeurs, TI-AE, CESU, PAJEMPLOI, etc.) utilisées dans les formulaires d'évaluation. Ajoutez ou supprimez des entrées selon vos besoins, puis sauvegardez.</p>
+        </section>
+
+        <section id="admin-prompt" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Prompt IA</h2>
+            <p class="text-slate-600 mb-3">Deux templates de prompt : <strong>commentaire d'évaluation</strong> et <strong>bilan qualité</strong>. Placeholders : <code class="text-xs bg-slate-200 px-1 rounded">{{agentName}}</code>, <code class="text-xs bg-slate-200 px-1 rounded">{{campaignName}}</code>, <code class="text-xs bg-slate-200 px-1 rounded">{{evalsCount}}</code>, <code class="text-xs bg-slate-200 px-1 rounded">{{criteriaBlock}}</code>, <code class="text-xs bg-slate-200 px-1 rounded">{{evaluationsBlock}}</code>, etc.</p>
+            <p class="text-slate-600">Modifiez le ton et le format des textes générés selon vos consignes.</p>
+        </section>
+
+        <section id="admin-mise-a-jour" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Paramètres système</h2>
+            <p class="text-slate-600 mb-3">Cette page regroupe la <strong>clé API Mistral</strong> (optionnelle, pour les boutons « Générer avec l'IA » du bilan et du commentaire d'évaluation) avec l'option pour désactiver l'IA, et la <strong>source des mises à jour</strong> (dépôt GitHub). Configurez propriétaire du dépôt, nom du dépôt, et éventuellement un token (lecture seule) pour un dépôt privé. La vérification et l'installation des mises à jour se font depuis le <strong>hub admin</strong> (bandeau si une version plus récente est disponible).</p>
+            <p class="text-slate-600 mb-3">Lors de l'installation, le dossier <strong>Campagnes</strong> et les fichiers de données (agents, sites, superviseurs, config, grille) ne sont jamais modifiés.</p>
+            <p class="text-slate-600">Après une mise à jour, rechargez la page pour utiliser la nouvelle version.</p>
+        </section>
+    </div>
+
+    <a href="#sommaire" class="fixed bottom-6 right-6 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-lg transition-colors z-50">↑ Sommaire</a>
+
+    <script>
+        (function() {
+            var inIframe = window.self !== window.top;
+
+            function applyDocView() {
+                if (!inIframe) return;
+                var hash = location.hash.slice(1);
+                var container = document.querySelector('.max-w-3xl');
+                if (!container) return;
+                var firstP = container.querySelector('p');
+                var h1 = container.querySelector('h1');
+                var nav = document.getElementById('sommaire');
+                var sommaireLink = document.querySelector('a[href="#sommaire"]');
+                var sections = document.querySelectorAll('section[id]');
+                if (hash) {
+                    if (firstP) firstP.style.display = 'none';
+                    if (h1) h1.style.display = 'none';
+                    if (nav) nav.style.display = 'none';
+                    if (sommaireLink) sommaireLink.style.display = 'none';
+                    sections.forEach(function(s) { s.style.display = s.id === hash ? '' : 'none'; });
+                } else {
+                    if (firstP) firstP.style.display = '';
+                    if (h1) h1.style.display = '';
+                    if (nav) nav.style.display = '';
+                    if (sommaireLink) sommaireLink.style.display = '';
+                    sections.forEach(function(s) { s.style.display = ''; });
+                }
+            }
+            document.addEventListener('DOMContentLoaded', applyDocView);
+            window.addEventListener('hashchange', applyDocView);
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Modèles d'emails Bilan | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init(); initEmailTemplatesEdit()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-4xl mx-auto py-10 px-6">
+        <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-10">
+            <div>
+                <h1 class="text-3xl font-black text-indigo-900 mt-2">Modèles d'emails Bilan</h1>
+                <p class="text-slate-500 text-sm mt-1">Objet et corps des mails d'envoi de bilan selon le type de campagne (Scoring ou Entretien).</p>
+            </div>
+        </div>
+
+        <div x-data="{ activeTab: 'scoring' }" class="mb-10">
+            <nav class="flex gap-1 p-1 bg-slate-200 rounded-xl w-fit mb-6" role="tablist">
+                <button type="button" role="tab" :aria-selected="activeTab === 'scoring'" aria-controls="panel-scoring" id="tab-scoring"
+                        @click="activeTab = 'scoring'"
+                        :class="activeTab === 'scoring' ? 'bg-white text-indigo-700 shadow font-bold' : 'text-slate-600 hover:text-slate-800'"
+                        class="px-4 py-2 rounded-lg text-sm transition-colors">
+                    Scoring
+                </button>
+                <button type="button" role="tab" :aria-selected="activeTab === 'review'" aria-controls="panel-review" id="tab-review"
+                        @click="activeTab = 'review'"
+                        :class="activeTab === 'review' ? 'bg-white text-indigo-700 shadow font-bold' : 'text-slate-600 hover:text-slate-800'"
+                        class="px-4 py-2 rounded-lg text-sm transition-colors">
+                    Entretien (Review)
+                </button>
+            </nav>
+
+            <!-- Onglet Scoring -->
+            <div id="panel-scoring" role="tabpanel" aria-labelledby="tab-scoring" x-show="activeTab === 'scoring'" x-transition>
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-indigo-900 mt-2">Modèle d'email Bilan Qualité</h2>
+                        <p class="text-slate-500 text-sm mt-1">Objet et corps du mail lors de l'envoi d'un bilan de campagne scoring.</p>
+                    </div>
+                    <button @click="saveEmailTemplates()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">Sauvegarder</button>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-4">
+                    <p class="text-sm font-bold text-amber-900 mb-2">Balises disponibles</p>
+                    <ul class="text-sm text-amber-800 space-y-1">
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{agent}}</code> — Nom de l'agent</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{campagne}}</code> — Nom de la campagne</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{date}}</code> — Date du jour</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{note}}</code> — Note moyenne des évaluations (scoring uniquement)</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{synthese}}</code> — Synthèse du superviseur (commentaire du bilan)</li>
+                    </ul>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 space-y-6">
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-2">Objet du mail</label>
+                        <input type="text" x-model="emailTemplatesScoringSubjectEdit" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Objet…">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-2">Corps du mail</label>
+                        <textarea x-model="emailTemplatesScoringBodyEdit" rows="14" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 resize-y" placeholder="Corps du mail…"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Onglet Review -->
+            <div id="panel-review" role="tabpanel" aria-labelledby="tab-review" x-show="activeTab === 'review'" x-transition>
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+                    <div>
+                        <h2 class="text-xl font-black text-indigo-900 mt-2">Modèle d'email Bilan Entretien</h2>
+                        <p class="text-slate-500 text-sm mt-1">Objet et corps du mail lors de l'envoi d'un bilan de campagne entretien (review).</p>
+                    </div>
+                    <button @click="saveEmailTemplates()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">Sauvegarder</button>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-4">
+                    <p class="text-sm font-bold text-amber-900 mb-2">Balises disponibles</p>
+                    <ul class="text-sm text-amber-800 space-y-1">
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{agent}}</code> — Nom de l'agent</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{campagne}}</code> — Nom de la campagne</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{date}}</code> — Date du jour</li>
+                        <li><code class="bg-amber-100 px-1.5 py-0.5 rounded font-mono">{{synthese}}</code> — Synthèse des échanges (commentaire du bilan)</li>
+                    </ul>
+                    <p class="text-xs text-amber-700 mt-2">La balise <code class="bg-amber-100 px-1 rounded">{{note}}</code> n'est pas disponible pour l'entretien.</p>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100 space-y-6">
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-2">Objet du mail</label>
+                        <input type="text" x-model="emailTemplatesReviewSubjectEdit" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Objet…">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-2">Corps du mail</label>
+                        <textarea x-model="emailTemplatesReviewBodyEdit" rows="14" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 resize-y" placeholder="Corps du mail…"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Administration | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-5xl mx-auto py-16 px-6">
+        <header class="mb-12 text-center">
+            <h1 class="text-4xl font-black text-indigo-900 tracking-tight">Configuration Système</h1>
+            <p class="text-slate-500 mt-2 font-medium">Choisissez le module à administrer</p>
+        </header>
+
+        <!-- Campagnes en évidence (première tuile, style distinct) -->
+        <a href="admin-campagnes.html" class="block mb-8 group bg-amber-50 border border-amber-200 p-8 rounded-[2.5rem] shadow-xl hover:shadow-amber-100 transition-all text-center max-w-md mx-auto">
+            <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform bg-amber-100">
+                <span class="text-4xl">📁</span>
+            </div>
+            <h2 class="text-xl font-black text-amber-900 uppercase tracking-tighter">Campagnes</h2>
+            <p class="text-xs text-amber-700 mt-2">Périodes, objectifs et agents par campagne</p>
+        </a>
+
+        <!-- Autres modules -->
+        <div class="flex flex-wrap justify-center gap-8" x-data="{
+            tiles: [
+                { href: 'admin-referentiels.html', icon: '⚙️', bg: 'bg-slate-100', title: 'Référentiels et paramètres', desc: 'Agents, superviseurs, sites, durées, offres et grille' },
+                { href: 'admin-mise-a-jour.html', icon: '🔄', bg: 'bg-sky-100', title: 'Paramètres système', desc: 'Clé API Mistral, source des mises à jour (GitHub)' },
+                { href: 'admin-doc.html', icon: '📖', bg: 'bg-rose-100', title: 'Documentation', desc: 'Guide complet de l\'application' }
+            ]
+        }">
+            <template x-for="t in tiles" :key="t.href">
+                <a :href="t.href" class="group bg-white p-8 rounded-[2.5rem] shadow-xl hover:shadow-indigo-100 border border-slate-100 transition-all text-center w-64 min-w-0">
+                    <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform" :class="t.bg">
+                        <span class="text-4xl" x-text="t.icon"></span>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter" x-text="t.title"></h2>
+                    <p class="text-xs text-slate-400 mt-2" x-text="t.desc"></p>
+                </a>
+            </template>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Gestion Sites | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-4xl mx-auto py-10 px-6">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+                <h1 class="text-3xl font-black text-indigo-900 mt-2">Gestion des Sites</h1>
+            </div>
+            <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-[10px] font-black text-slate-400 uppercase block leading-none mb-1">Total Sites</span>
+                <span class="text-2xl font-black text-indigo-600" x-text="sites.length"></span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-8">
+            <div class="col-span-12 md:col-span-4">
+                <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 sticky top-10">
+                    <h3 class="text-sm font-black text-slate-800 uppercase mb-6 tracking-wider">Nouveau site</h3>
+                    <div class="space-y-4" x-data="{ newSiteName: '' }">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Nom du site</label>
+                            <input type="text" x-model="newSiteName" placeholder="Ex. Caen, Rouen..." class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all">
+                        </div>
+                        <button @click="addSite(newSiteName); newSiteName = ''" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                            Ajouter le site
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-span-12 md:col-span-8">
+                <div class="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+                    <div class="max-h-[calc(100vh-18rem)] overflow-y-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-50 border-b sticky top-0 z-10">
+                                <tr>
+                                    <th class="p-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Site</th>
+                                    <th class="p-6"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="site in sites" :key="site.id">
+                                    <tr class="border-t border-slate-50 hover:bg-slate-50/50 transition-colors" x-data="{ editing: false, editName: '' }">
+                                        <td class="p-6">
+                                            <div x-show="!editing" class="flex items-center gap-3">
+                                                <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-black text-sm" x-text="(site.nom || '').charAt(0)"></div>
+                                                <span class="font-bold text-slate-700" x-text="site.nom"></span>
+                                            </div>
+                                            <div x-show="editing" class="flex gap-2">
+                                                <input type="text" x-model="editName" class="flex-1 bg-white border-2 border-indigo-200 rounded-lg px-3 py-2 text-sm font-bold">
+                                            </div>
+                                        </td>
+                                        <td class="p-6 text-right">
+                                            <div x-show="!editing" class="flex gap-2 justify-end">
+                                                <button @click="editing = true; editName = site.nom" class="text-indigo-400 hover:text-indigo-600 font-bold p-2 transition-colors">✎</button>
+                                                <button @click="deleteSite(site.id)" class="text-rose-400 hover:text-rose-600 font-bold p-2 transition-colors">🗑️</button>
+                                            </div>
+                                            <div x-show="editing" class="flex gap-2 justify-end">
+                                                <button @click="updateSite(site.id, editName); editing = false" class="text-emerald-500 hover:text-emerald-700 font-bold p-2">✓</button>
+                                                <button @click="editing = false" class="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

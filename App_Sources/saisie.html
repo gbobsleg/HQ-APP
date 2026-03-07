@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Saisie | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="js/pdfBilan.js"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,doc-modal.js,nav.js,../config/config_grille.js,mistralBilan.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/StatsRepository.js"></script>
+    <script src="js/UIComponents.js"></script>
+    <script src="js/Agent360ChartsView.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        html { scrollbar-gutter: stable; }
+        @media (min-width: 1024px) {
+            .saisie-col-gauche-fixed { position: fixed; top: 6.75rem; max-height: calc(100vh - 7.75rem); overflow-y: auto; }
+            body.saisie-contexte-agent .saisie-col-gauche-fixed { top: 10.75rem; max-height: calc(100vh - 11.75rem); }
+            .saisie-col-gauche-fixed.saisie-col-eval { left: max(1.5rem, calc((100vw - 80rem) / 2 + 1.5rem)); width: calc((min(100vw, 80rem) - 3rem - 2rem) * 4 / 12); }
+            .saisie-col-gauche-fixed.saisie-col-bilan { left: max(1.5rem, calc((100vw - 80rem) / 2 + 1.5rem)); width: calc((min(100vw, 80rem) - 3rem - 2rem) * 2 / 5); }
+        }
+    </style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init(); $nextTick(() => { grid.forEach((c,i) => c.collapsed = i !== 0); })" :class="{ 'saisie-contexte-agent': agentContext.active }">
+    <nav class="sticky top-0 z-50 bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <!-- HEADER CONTEXTUEL (DOSSIER AGENT) -->
+    <template x-if="agentContext.active">
+        <div class="bg-white border-b border-slate-200 sticky top-[68px] z-40 shadow-sm">
+            <div class="max-w-7xl mx-auto px-6 py-3">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-3 min-w-0">
+                        <a href="pilotage.html" class="shrink-0 bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 p-2 rounded-xl transition-colors">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        </a>
+                        <div class="min-w-0">
+                            <h1 class="text-xl font-black text-slate-800 tracking-tight truncate" x-text="agentContext.agentName"></h1>
+                            <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest" x-text="'Dossier : ' + agentContext.campaignName"></p>
+                            <p x-show="campaignConfig && campaignConfig.period_start" class="text-[10px] text-slate-400 mt-0.5" x-text="(campaignConfig && campaignConfig.period_start) ? ('Période évaluée : du ' + formatDateToFR(campaignConfig.period_start) + ' au ' + formatDateToFR(campaignConfig.period_end)) : ''"></p>
+                        </div>
+                        <!-- TABS inline -->
+                        <div class="flex items-center gap-1.5 overflow-x-auto scrollbar-hide shrink-0">
+                            <template x-for="(tab, index) in agentContext.tabs" :key="tab.id">
+                                <button @click="selectTab(tab.id)" 
+                                        class="relative px-4 py-2 rounded-lg font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 group shrink-0"
+                                        :class="agentContext.activeTabIndex === index 
+                                            ? (tab.type === 'bilan' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-slate-800 text-white shadow-md shadow-slate-300') 
+                                            : 'bg-slate-100 text-slate-500 hover:bg-white hover:shadow-sm'">
+                                    <span class="w-2 h-2 rounded-full shrink-0" 
+                                          :class="{
+                                              'bg-slate-300': tab.status === 'empty' || tab.status === 'new',
+                                              'bg-emerald-400': tab.status === 'saved' || tab.status === 'sent',
+                                              'bg-amber-400': tab.status === 'draft'
+                                          }"></span>
+                                    <span x-text="tab.label"></span>
+                                    <template x-if="tab.type === 'eval'">
+                                        <span x-show="!isCampaignClosed" @click.stop="removeEvalTab(index)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 text-xs leading-none">×</span>
+                                    </template>
+                                </button>
+                            </template>
+                            <button x-show="!isCampaignClosed" @click="addEvalTab()" class="px-3 py-2 rounded-lg font-bold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border border-dashed border-slate-300 hover:border-indigo-300 text-xs shrink-0">
+                                +
+                            </button>
+                            <button type="button" @click="openPanel360()" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors shrink-0" title="Voir l'historique 360°">📊 Voir l'historique 360°</button>
+                            <button type="button" @click="copyShareLink()" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs transition-colors shrink-0" title="Copier le lien de partage" aria-label="Copier le lien de partage">🔗</button>
+                            <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = (agentContext.tabs[agentContext.activeTabIndex]?.type === 'bilan' ? '#saisie-bilan' : '#saisie-eval')" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-[10px] font-bold transition-colors shrink-0" :title="(agentContext.tabs[agentContext.activeTabIndex]?.type === 'bilan' ? 'Aide : Bilan' : 'Aide : Évaluation')">?</button>
+                        </div>
+                    </div>
+                    <template x-if="agentContext.tabs[agentContext.activeTabIndex]?.type === 'eval'">
+                        <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-100 shadow-sm shrink-0">
+                            <span class="w-1.5 h-1.5 rounded-full"
+                                  :class="evalSaveStatus === 'Enregistré' ? 'bg-emerald-500' : (evalSaveStatus === 'Erreur' ? 'bg-rose-500' : 'bg-amber-500 animate-pulse')"></span>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500" x-text="evalSaveStatus"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-7xl mx-auto py-10 px-6">
+        
+        <!-- VUE ÉVALUATION (Formulaire Standard) -->
+        <!-- S'affiche si Context Inactif OU Tab Active est Eval -->
+        <template x-if="!agentContext.active || (agentContext.tabs[agentContext.activeTabIndex] && agentContext.tabs[agentContext.activeTabIndex].type === 'eval')">
+            <div class="grid grid-cols-12 gap-8 items-start">
+                <aside class="col-span-12 lg:col-span-4">
+                    <div class="saisie-col-gauche-fixed saisie-col-eval space-y-6 pr-2 pb-8">
+                    <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100">
+                        <!-- TITRE ONGLET ACTIF -->
+                        <template x-if="agentContext.active && agentContext.tabs[agentContext.activeTabIndex]">
+                            <div class="mb-6 pb-6 border-b border-slate-100">
+                                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Fiche en cours</span>
+                                <h3 class="text-2xl font-black text-slate-800 mt-1" x-text="agentContext.tabs[agentContext.activeTabIndex].label"></h3>
+                            </div>
+                        </template>
+
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Informations</h2>
+                            <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#saisie-eval'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors" title="Aide : Évaluation">?</button>
+                        </div>
+                        <div class="space-y-4">
+                            
+                            <!-- Selectors (Only if NOT in context) -->
+                            <template x-if="!agentContext.active">
+                                <div class="space-y-4">
+                                    <select x-model="form.agent" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                        <option value="">-- Choisir Agent --</option>
+                                        <template x-for="group in groupedAgents" :key="group.site">
+                                            <optgroup :label="group.site">
+                                                <template x-for="agent in group.agents"><option :value="agent.id" x-text="getAgentDisplayName(agent)"></option></template>
+                                            </optgroup>
+                                        </template>
+                                    </select>
+                                    <select x-model="form.campagne" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                        <option value="">-- Dossier Campagne --</option>
+                                        <template x-for="f in folders" :key="f.name"><option :value="f.name" x-text="f.name"></option></template>
+                                    </select>
+                                </div>
+                            </template>
+
+                            <div x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Offre</label>
+                                <select x-model="form.offre" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="">-- Type d'Offre --</option>
+                                    <template x-for="o in appConfig.offers" :key="o"><option :value="o" x-text="o"></option></template>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
+                                    <span x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">Date et heure de la communication</span>
+                                    <span x-show="campaignConfig && campaignConfig.campaign_type === 'review'">Date et heure de l'entretien</span>
+                                </label>
+                                <input type="datetime-local" x-model="form.date_communication" :readonly="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                            </div>
+
+                            <div x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
+                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Durée de la communication</label>
+                                <div class="relative flex gap-2">
+                                    <div class="relative flex-1">
+                                        <input type="number" x-model="form.duree_min" :readonly="isCampaignClosed" placeholder="Min" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
+                                    <span class="absolute right-8 top-3 text-slate-300 text-xs font-bold pointer-events-none">min</span>
+                                </div>
+                                <div class="relative flex-1">
+                                    <input type="number" x-model="form.duree_sec" :readonly="isCampaignClosed" placeholder="Sec" max="59" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
+                                    <span class="absolute right-8 top-3 text-slate-300 text-xs font-bold pointer-events-none">sec</span>
+                                </div>
+                                
+                                <template x-if="badgeDuree">
+                                    <span class="absolute -top-2 -right-2 px-2 py-0.5 rounded text-[10px] font-black uppercase border shadow-sm z-10" 
+                                          :class="badgeDuree.color" 
+                                          x-text="badgeDuree.label"></span>
+                                </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div x-show="form.note !== 'N/A'" class="mt-10 text-center bg-indigo-50 p-6 rounded-[2rem] border-2 border-indigo-100">
+                            <p class="text-[10px] font-black text-indigo-400 uppercase mb-1">Note Automatique</p>
+                            <div class="text-6xl font-black text-indigo-600 leading-none" x-text="form.note"></div>
+                            <div class="text-sm font-bold text-indigo-300 mt-2">sur 10</div>
+                        </div>
+
+                        <!-- Bouton Sauvegarde Contextuel ou Standard -->
+                        <template x-if="agentContext.active && !isCampaignClosed">
+                            <button @click="saveContextEval()" class="w-full mt-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2">
+                                <span>💾</span> ENREGISTRER L'ONGLET
+                            </button>
+                        </template>
+                        <template x-if="!agentContext.active && !isCampaignClosed">
+                            <button @click="saveEval()" class="w-full mt-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all">💾 ENREGISTRER</button>
+                        </template>
+                    </div>
+                    </div>
+                </aside>
+
+                <section class="col-span-12 lg:col-span-8 flex flex-col gap-8">
+                    <template x-for="(section, index) in (grid || [])" :key="section.id || index">
+                        <div class="bg-white rounded-3xl shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
+                            
+                            <div @click="toggleAccordion(index)" class="bg-slate-50 px-6 py-3 border-b border-slate-100 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition-colors select-none">
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="section.collapsed ? '-rotate-90' : 'rotate-0'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest" x-text="section.label"></h3>
+                                </div>
+                                <span x-show="(section.fields || []).some(f => f.type === 'scoring')" class="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-[10px] font-black uppercase">
+                                    Sous-total : <span x-text="getSubTotal(section)"></span> pts
+                                </span>
+                            </div>
+                            
+                            <div class="p-6 space-y-6" x-show="!section.collapsed" x-transition>
+                                <template x-for="field in (section.fields || [])" :key="field.id">
+                                    <div>
+                                        <template x-if="field.type === 'scoring'">
+                                            <div class="border-b border-slate-50 last:border-0 pb-4 mb-4 last:pb-0 last:mb-0" x-data="{ showComment: false }" x-init="$watch('form', () => showComment = !!(form.comments && form.comments[field.id])); showComment = !!(form.comments && form.comments[field.id])">
+                                                <div class="grid grid-cols-12 items-center gap-4 group">
+                                                    <div class="col-span-7 flex items-center gap-2">
+                                                        <label class="text-sm font-bold text-slate-700" x-text="field.label"></label>
+                                                        <div class="relative group/tip" x-show="field.hint">
+                                                            <span class="cursor-help text-slate-300 hover:text-indigo-500 transition-colors">ⓘ</span>
+                                                            <div class="absolute bottom-full left-0 mb-3 hidden group-hover/tip:block w-72 p-4 bg-slate-800 text-white text-sm rounded-2xl shadow-2xl z-50 leading-relaxed animate-in fade-in zoom-in-95">
+                                                                <p class="font-bold text-indigo-300 mb-1">Attendu :</p>
+                                                                <p x-text="field.hint"></p>
+                                                                <div class="absolute top-full left-4 border-8 border-transparent border-t-slate-800"></div>
+                                                            </div>
+                                                        </div>
+                                                        <template x-if="field.oblig">
+                                                            <span class="text-[8px] font-black text-rose-400 border border-rose-100 px-1.5 rounded uppercase tracking-tighter">Oblig.</span>
+                                                        </template>
+                                                    </div>
+                                                    <div class="col-span-5 flex items-center gap-3 justify-end">
+                                                        <button @click="showComment = !showComment" class="p-2 rounded-lg transition-colors"
+                                                                :class="showComment || (form.comments && form.comments[field.id]) ? 'text-indigo-500 bg-indigo-50' : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'"
+                                                                title="Ajouter un commentaire">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                                                            </svg>
+                                                        </button>
+                                                        <input type="range" min="0" :max="field.max" :step="(field.step ?? 0.5)"
+                                                               x-model="form.scores[field.id]"
+                                                               @input="updateNote()"
+                                                               :disabled="isCampaignClosed"
+                                                               class="w-24 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                                                        <span class="w-12 text-right font-black text-indigo-600 text-sm" x-text="(form.scores[field.id] ?? field.max) + '/' + field.max"></span>
+                                                    </div>
+                                                </div>
+                                                <div x-show="showComment" x-transition class="mt-3 ml-2 mr-2">
+                                                    <textarea x-model="form.comments[field.id]"
+                                                              :readonly="isCampaignClosed"
+                                                              class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400"
+                                                              rows="2" placeholder="Commentaire spécifique à ce critère..."></textarea>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <template x-if="field.type === 'textarea'">
+                                            <div class="border-b border-slate-50 last:border-0 pb-4 mb-4 last:pb-0 last:mb-0">
+                                                <div class="flex items-center gap-2 mb-2">
+                                                    <label class="text-sm font-bold text-slate-700" x-text="field.label"></label>
+                                                    <div class="relative group/tip" x-show="field.hint">
+                                                        <span class="cursor-help text-slate-300 hover:text-indigo-500 transition-colors">ⓘ</span>
+                                                        <div class="absolute bottom-full left-0 mb-3 hidden group-hover/tip:block w-72 p-4 bg-slate-800 text-white text-sm rounded-2xl shadow-2xl z-50 leading-relaxed">
+                                                            <p class="font-bold text-indigo-300 mb-1">Attendu :</p>
+                                                            <p x-text="field.hint"></p>
+                                                            <div class="absolute top-full left-4 border-8 border-transparent border-t-slate-800"></div>
+                                                        </div>
+                                                    </div>
+                                                    <template x-if="field.oblig">
+                                                        <span class="text-[8px] font-black text-rose-400 border border-rose-100 px-1.5 rounded uppercase tracking-tighter">Oblig.</span>
+                                                    </template>
+                                                </div>
+                                                <textarea x-model="form.textResponses[field.id]"
+                                                          :readonly="isCampaignClosed"
+                                                          :rows="field.rows || 3"
+                                                          :placeholder="field.placeholder || ''"
+                                                          class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400"></textarea>
+                                            </div>
+                                        </template>
+                                        <template x-if="field.type === 'boolean'">
+                                            <div class="border-b border-slate-50 last:border-0 pb-4 mb-4 last:pb-0 last:mb-0 flex items-center gap-3">
+                                                <label class="flex items-center gap-2 cursor-pointer flex-1">
+                                                    <input type="checkbox" x-model="form.booleanResponses[field.id]"
+                                                           :disabled="isCampaignClosed"
+                                                           class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                    <span class="text-sm font-bold text-slate-700" x-text="field.label"></span>
+                                                </label>
+                                                <div class="relative group/tip" x-show="field.hint">
+                                                    <span class="cursor-help text-slate-300 hover:text-indigo-500 transition-colors">ⓘ</span>
+                                                    <div class="absolute bottom-full right-0 mb-3 hidden group-hover/tip:block w-72 p-4 bg-slate-800 text-white text-sm rounded-2xl shadow-2xl z-50 leading-relaxed">
+                                                        <p class="font-bold text-indigo-300 mb-1">Attendu :</p>
+                                                        <p x-text="field.hint"></p>
+                                                        <div class="absolute top-full right-4 border-8 border-transparent border-t-slate-800"></div>
+                                                    </div>
+                                                </div>
+                                                <template x-if="field.oblig">
+                                                    <span class="text-[8px] font-black text-rose-400 border border-rose-100 px-1.5 rounded uppercase tracking-tighter">Oblig.</span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm" x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-4 tracking-widest text-center italic">Commentaires & Axes de progrès</label>
+                        <div class="flex flex-col sm:flex-row gap-2 mb-3" x-show="!isCampaignClosed">
+                            <button type="button"
+                                    x-show="!appConfig.promptGenerateButtonHidden"
+                                    @click="copyEvalCommentPromptToClipboard()"
+                                    :disabled="form.note === 'N/A' ? (Object.keys(form.textResponses || {}).filter(k => (form.textResponses[k]||'').trim() !== '').length === 0 && Object.keys(form.booleanResponses || {}).filter(k => form.booleanResponses[k]).length === 0) : (Object.keys(form.scores || {}).filter(k => form.scores[k] != null && form.scores[k] !== '').length === 0)"
+                                    class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                <span>✨</span> Générer le prompt IA
+                            </button>
+                            <button type="button"
+                                    x-show="(appConfig.mistralApiKey || '').trim() && !appConfig.mistralDisabled"
+                                    @click="generateEvalCommentWithMistral()"
+                                    :disabled="(form.note === 'N/A' ? (Object.keys(form.textResponses || {}).filter(k => (form.textResponses[k]||'').trim() !== '').length === 0 && Object.keys(form.booleanResponses || {}).filter(k => form.booleanResponses[k]).length === 0) : (Object.keys(form.scores || {}).filter(k => form.scores[k] != null && form.scores[k] !== '').length === 0)) || evalCommentGenerating"
+                                    class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                <span x-text="evalCommentGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
+                            </button>
+                        </div>
+                        <textarea x-model="form.commentaire" :readonly="isCampaignClosed" rows="4" class="w-full bg-slate-50 border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Décrivez les points d'amélioration..."></textarea>
+                    </div>
+                </section>
+            </div>
+        </template>
+
+        <!-- VUE BILAN -->
+        <template x-if="agentContext.active && agentContext.tabs[agentContext.activeTabIndex] && agentContext.tabs[agentContext.activeTabIndex].type === 'bilan'">
+            <div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+                 <!-- Colonne GAUCHE : Contexte -->
+                 <div class="lg:col-span-2">
+                    <div class="saisie-col-gauche-fixed saisie-col-bilan space-y-6 pr-2 pb-8">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                        <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Évaluations incluses</h4>
+                        <div class="space-y-4">
+                            <template x-for="(eval, index) in (bilanForm.evals || [])" :key="'eval-' + index">
+                                <div class="flex justify-between items-center p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
+                                    <div class="flex flex-col">
+                                        <span class="text-xs font-bold font-mono text-slate-500" x-text="eval.date"></span>
+                                        <span class="text-[10px] text-slate-400 truncate w-32" x-text="eval.fileContent && eval.fileContent.offre ? eval.fileContent.offre : 'Sans offre'"></span>
+                                    </div>
+                                    <div class="font-black text-2xl" :class="parseFloat(eval.note) >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="eval.note"></div>
+                                </div>
+                            </template>
+                            <template x-if="!(bilanForm.evals && bilanForm.evals.length)">
+                                <p class="text-center text-sm text-slate-400 italic py-4">Aucune évaluation validée dans ce dossier.</p>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+                        <h4 class="text-xs font-black text-indigo-400 uppercase tracking-widest mb-4">Aide à la décision</h4>
+                        <p class="text-sm text-indigo-900 leading-relaxed opacity-80 mb-4">
+                            Utilisez les commentaires des évaluations précédentes pour synthétiser les progrès et les axes d'amélioration.
+                        </p>
+                        <div class="flex flex-col gap-2" x-show="!isCampaignClosed">
+                            <button @click="copyBilanPromptToClipboard()"
+                                    x-show="!appConfig.promptGenerateButtonHidden"
+                                    :disabled="(bilanForm.evals || []).length === 0"
+                                    class="w-full px-4 py-3 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                <span>✨</span> Générer le prompt IA
+                            </button>
+                            <button @click="generateBilanWithMistral()"
+                                    x-show="(appConfig.mistralApiKey || '').trim() && !appConfig.mistralDisabled"
+                                    :disabled="(bilanForm.evals || []).length === 0 || bilanGenerating"
+                                    class="w-full px-4 py-3 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                <span x-text="bilanGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-indigo-600/80 mt-2 text-center" x-show="(bilanForm.evals || []).length === 0">Ajoutez des évaluations pour activer les boutons.</p>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Colonne DROITE : Édition -->
+                <div class="lg:col-span-3 flex flex-col h-full space-y-6">
+                    <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 flex-1 flex flex-col">
+                        
+                        <div class="mb-8">
+                            <div class="flex justify-between items-baseline mb-3">
+                                <label class="block text-sm font-bold text-slate-700 uppercase">Synthèse du Manager</label>
+                                <span class="text-[10px] text-slate-400" x-show="bilanForm.lastSaved" x-text="'Sauvegardé : ' + new Date(bilanForm.lastSaved).toLocaleTimeString()"></span>
+                            </div>
+                            <textarea x-model="bilanForm.comment"
+                                      x-bind:readonly="isCampaignClosed"
+                                      class="w-full h-80 bg-slate-50 border border-slate-200 rounded-2xl p-6 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm leading-relaxed resize-none shadow-inner"
+                                      :class="{'bg-gray-100': isCampaignClosed}"
+                                      placeholder="Rédigez ici le bilan global, les points forts constatés et les objectifs pour la prochaine période..."></textarea>
+                        </div>
+
+                    </div>
+
+                    <!-- Actions Bar -->
+                    <div class="bg-white p-4 rounded-2xl shadow-lg border border-slate-100 flex flex-wrap items-center gap-2">
+                            <button x-show="!isCampaignClosed && (!campaignConfig || campaignConfig.campaign_type === 'review' || campaignConfig.target_evals !== 1)"
+                                    @click="saveContextBilan()"
+                                    class="px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                                    :class="bilanCommentDirty ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 animate-pulse' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'">
+                                <span>💾</span> Sauvegarder
+                            </button>
+                            <span class="w-px h-6 bg-slate-200 mx-1 hidden sm:block" aria-hidden="true"></span>
+                            <button x-show="!isCampaignClosed && bilanForm.status !== 'sent'"
+                                    @click="closeBilan()" 
+                                    class="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                                    title="À utiliser une fois le bilan envoyé au destinataire">
+                                <span>✓</span> Clôturer le bilan
+                            </button>
+                    </div>
+
+                    <!-- Bloc Export PDF -->
+                    <div class="bg-slate-50 border border-slate-200 p-5 rounded-2xl">
+                        <h4 class="text-xs font-black text-slate-600 uppercase tracking-widest mb-3">Export PDF</h4>
+                        <p class="text-xs text-slate-600 mb-3">Générez le bilan au format PDF (résumé puis détail par évaluation). Téléchargement dans votre dossier Téléchargements.</p>
+                        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" x-model="bilanForm.hideNotesInPdf" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-sm font-medium text-slate-700">Ne pas inclure les notes dans le PDF</span>
+                            </label>
+                            <button @click="generateBilanPDF()" 
+                                    class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-slate-600 hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 shrink-0">
+                                <span>📄</span> Générer le PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bloc Envoi par mail -->
+                    <div class="bg-indigo-50/80 border border-indigo-100 p-5 rounded-2xl">
+                        <h4 class="text-xs font-black text-indigo-600 uppercase tracking-widest mb-3">Envoi par mail</h4>
+                        <p class="text-xs text-slate-600 mb-3">
+                            <strong class="text-indigo-700">1)</strong> Téléchargez le PDF ci-dessus.<br>
+                            <strong class="text-indigo-700">2)</strong> Renseignez l'adresse du destinataire et cliquez sur Envoyer pour ouvrir votre client mail.<br>
+                            <strong class="text-indigo-700">3)</strong> Joignez le PDF au mail avant d'envoyer.
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                            <input type="email" x-model="bilanForm.email" 
+                                   :readonly="isCampaignClosed"
+                                   class="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                                   placeholder="ex. prenom.nom@domaine.fr">
+                            <button @click="sendBilanEmail()" 
+                                    :disabled="!bilanForm.email?.trim()"
+                                    :title="!bilanForm.email?.trim() ? 'Renseignez l\'email pour activer l\'envoi' : ''"
+                                    class="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 shrink-0">
+                                <span>✉️</span> Envoyer par mail
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Modal : prompt IA généré (bilan ou commentaire global évaluation) -->
+        <template x-if="bilanPromptModalOpen && bilanPromptGenerated">
+            <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" @click.self="bilanPromptModalOpen = false">
+                <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col" @click.stop>
+                    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="text-lg font-black text-slate-800">Prompt prêt pour l'IA</h3>
+                        <button @click="bilanPromptModalOpen = false" class="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600">✕</button>
+                    </div>
+                    <div class="p-6 overflow-auto flex-1">
+                        <p class="text-xs text-slate-500 mb-3">Collez ce texte dans ChatGPT, Claude ou tout autre assistant IA.</p>
+                        <textarea readonly
+                                  class="w-full h-64 md:h-80 bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-mono leading-relaxed resize-none"
+                                  x-model="bilanPromptGenerated"></textarea>
+                    </div>
+                    <div class="p-6 border-t border-slate-100 flex gap-3 justify-end">
+                        <button @click="copyBilanPromptFromModal()"
+                                class="px-5 py-3 rounded-xl font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-colors">
+                            Copier
+                        </button>
+                        <button @click="bilanPromptModalOpen = false"
+                                class="px-5 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">
+                            Fermer
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+    </main>
+
+    <!-- Panneau latéral 360° (Slide-over) -->
+    <div x-show="isPanel360Open" x-cloak
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-[10000] flex justify-end">
+        <div class="absolute inset-0 bg-slate-900/50" @click="isPanel360Open = false" aria-hidden="true"></div>
+        <div class="relative w-full max-w-2xl lg:max-w-6xl h-full bg-white shadow-2xl overflow-hidden flex flex-col"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="translate-x-full"
+             @click.stop>
+            <div class="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                <h2 class="text-lg font-black text-slate-800">Historique 360° — <span x-text="agentContext.agentName || ''"></span></h2>
+                <button type="button" @click="isPanel360Open = false" class="p-2 rounded-xl text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors" aria-label="Fermer">✕</button>
+            </div>
+            <template x-if="rootHandle && campagnesHandle">
+                <div class="p-4 border-b border-slate-100 flex flex-wrap gap-4 items-center">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">Période production</span>
+                    <input type="date" x-model="panel360DateFrom" @change="refreshPanel360Charts()"
+                        class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                    <span class="text-slate-400">→</span>
+                    <input type="date" x-model="panel360DateTo" @change="refreshPanel360Charts()"
+                        class="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                </div>
+            </template>
+            <div x-show="!rootHandle || !campagnesHandle" class="p-6 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm">
+                <p class="font-bold">Données 360° indisponibles</p>
+                <p class="mt-1">Sélectionnez la racine du projet (icône dossier en haut de la page) pour charger les stats. En mode <code class="bg-amber-100 px-1 rounded">file://</code>, le stockage du navigateur (Tracking Prevention) peut bloquer la mémorisation du dossier — dans ce cas, rouvrez la page puis sélectionnez à nouveau le dossier HQ-APP.</p>
+            </div>
+            <div id="saisie-agent360-container" class="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4" x-show="rootHandle && campagnesHandle" data-agent360-tables-default="collapsed">
+                <!-- Structure calquée sur la vue 360 du dashboard pour réutiliser Agent360ChartsView -->
+                <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
+                    <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
+                    <div id="agent360-tel-filters" class="flex flex-wrap gap-1.5"></div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 id="agent360-dmt-title" class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Temps (s)</h3>
+                        <div id="agent360-tel-dmt-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                    </div>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-telephone-dmt"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 id="agent360-tel-title" class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Efficacité</h3>
+                        <div id="agent360-tel-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                    </div>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-telephone"></canvas>
+                    </div>
+                </div>
+                <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-courriels-volumes"></canvas>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-watt"></canvas>
+                    </div>
+                </div>
+                <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Évolution Qualité</h3>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-qualite"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

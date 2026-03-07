@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Paramètres système | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/migration_v2.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init(); initMistralApiKeyEdit(); initUpdateSourceEdit()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-4xl mx-auto py-10 px-6">
+        <div class="mb-10 flex items-start justify-between gap-3">
+            <div>
+                <a href="admin.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Hub</a>
+                <h1 class="text-3xl font-black text-indigo-900 mt-2">Paramètres système</h1>
+                <p class="text-slate-500 mt-2 text-sm">Clé API Mistral (IA) et source des mises à jour (dépôt GitHub). La vérification et l'installation des mises à jour se font depuis la page Administration.</p>
+            </div>
+            <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#admin-mise-a-jour'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors shrink-0" title="Aide : Paramètres système">?</button>
+        </div>
+
+        <div x-data="{ activeTab: 'mistral' }" class="mb-10">
+            <nav class="flex gap-1 p-1 bg-slate-200 rounded-xl w-fit mb-6" role="tablist">
+                <button type="button" role="tab" :aria-selected="activeTab === 'mistral'" aria-controls="panel-mistral" id="tab-mistral"
+                        @click="activeTab = 'mistral'"
+                        :class="activeTab === 'mistral' ? 'bg-white text-violet-700 shadow font-bold' : 'text-slate-600 hover:text-slate-800'"
+                        class="px-4 py-2 rounded-lg text-sm transition-colors">
+                    IA (Mistral)
+                </button>
+                <button type="button" role="tab" :aria-selected="activeTab === 'mise-a-jour'" aria-controls="panel-mise-a-jour" id="tab-mise-a-jour"
+                        @click="activeTab = 'mise-a-jour'; loadReleases()"
+                        :class="activeTab === 'mise-a-jour' ? 'bg-white text-sky-700 shadow font-bold' : 'text-slate-600 hover:text-slate-800'"
+                        class="px-4 py-2 rounded-lg text-sm transition-colors">
+                    Mise à jour
+                </button>
+            </nav>
+
+            <div id="panel-mistral" role="tabpanel" aria-labelledby="tab-mistral" x-show="activeTab === 'mistral'" x-transition>
+        <div class="bg-violet-50 border border-violet-200 rounded-2xl p-6 mb-10">
+            <div class="flex items-center gap-3 mb-3">
+                <img src="https://mistral.ai/static/branding/mistral-logo/mistral-logo-color-black.png" alt="Mistral AI" class="h-8 object-contain" onerror="this.style.display='none'">
+                <h2 class="text-lg font-black text-violet-900">Clé API Mistral</h2>
+            </div>
+            <p class="text-sm text-violet-800 mb-2">La clé est <strong>optionnelle</strong> : vous pouvez générer les prompts et les copier dans un autre outil (ChatGPT, Claude, etc.) sans clé. Elle est requise uniquement pour les boutons « Générer le commentaire avec l'IA » (bilan et commentaire global d'évaluation). Créez une clé sur <a href="https://console.mistral.ai" target="_blank" rel="noopener" class="underline font-bold">console.mistral.ai</a> (plan gratuit disponible).</p>
+            <p class="text-sm text-violet-800 mb-4"><strong>Les prompts ne contiennent aucune donnée confidentielle.</strong> Ce dispositif est aligné avec la <a href="https://recouv.sharepoint.com/sites/IAGen/SitePages/Donn%C3%A9es.aspx" target="_blank" rel="noopener" class="underline font-bold">charte d'utilisation des IA externes de l'Urssaf Caisse Nationale</a>.</p>
+            <!-- Mode affichage : clé enregistrée, pas d'édition -->
+            <div x-show="appConfig.mistralApiKey && !mistralApiKeyEditing" class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                <div class="flex-1">
+                    <label class="block text-xs font-bold text-violet-700 uppercase mb-1">Clé API Mistral</label>
+                    <div class="w-full bg-white border border-violet-200 rounded-xl px-4 py-3 font-mono text-sm text-slate-500">
+                        Clé enregistrée ••••••••••••
+                    </div>
+                </div>
+                <button type="button" @click="startMistralApiKeyEdit()" class="bg-violet-600 hover:bg-violet-700 text-white font-bold px-6 py-3 rounded-xl shadow transition-colors shrink-0">
+                    Modifier
+                </button>
+            </div>
+            <!-- Mode édition : pas de clé ou modification en cours -->
+            <div x-show="!appConfig.mistralApiKey || mistralApiKeyEditing" class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                <div class="flex-1">
+                    <label class="block text-xs font-bold text-violet-700 uppercase mb-1">Clé API Mistral</label>
+                    <input type="password"
+                           x-model="mistralApiKeyEdit"
+                           autocomplete="off"
+                           class="w-full bg-white border border-violet-200 rounded-xl px-4 py-3 font-mono text-sm text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500"
+                           placeholder="Ex. Votre clé API Mistral">
+                </div>
+                <div class="flex gap-3 shrink-0">
+                    <button type="button" x-show="appConfig.mistralApiKey && mistralApiKeyEditing" @click="cancelMistralApiKeyEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-colors">
+                        Annuler
+                    </button>
+                    <button type="button" @click="saveMistralApiKey()" class="bg-violet-600 hover:bg-violet-700 text-white font-bold px-6 py-3 rounded-xl shadow transition-colors">
+                        Sauvegarder la clé
+                    </button>
+                </div>
+            </div>
+            <label class="flex items-center gap-2 mt-4 cursor-pointer">
+                <input type="checkbox" x-model="appConfig.mistralDisabled" @change="saveAppConfig()" class="rounded border-violet-300 text-violet-600 focus:ring-violet-500">
+                <span class="text-sm font-medium text-violet-800">Désactiver l'IA</span>
+            </label>
+            <p class="text-xs text-violet-600/80 mt-1">Si coché, les boutons « Générer le commentaire avec l'IA » sont masqués (bilan et grille).</p>
+        </div>
+            </div>
+
+            <div id="panel-mise-a-jour" role="tabpanel" aria-labelledby="tab-mise-a-jour" x-show="activeTab === 'mise-a-jour'" x-transition>
+        <!-- Historique des versions (GitHub Releases) -->
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 mb-10">
+            <div class="flex items-center justify-between gap-4 mb-4">
+                <h2 class="text-lg font-black text-slate-800">Historique des versions</h2>
+                <button type="button" @click="loadReleases()" :disabled="releasesLoading"
+                        class="text-sm font-medium text-sky-600 hover:text-sky-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span x-text="releasesLoading ? 'Chargement...' : 'Actualiser'"></span>
+                </button>
+            </div>
+            <p class="text-sm text-slate-500 mb-4">Notes de version publiées sur GitHub (releases). Version locale : <strong x-text="typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?'"></strong></p>
+            <div x-show="releasesLoading" class="py-8 text-center text-slate-500 text-sm">Chargement des releases...</div>
+            <div x-show="!releasesLoading && releasesError" class="py-4 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm" x-text="releasesError"></div>
+            <div x-show="!releasesLoading && !releasesError && releases.length === 0" class="py-6 text-center text-slate-500 text-sm">Aucune release publiée sur le dépôt. Configurez la source de mise à jour et actualisez.</div>
+            <div x-show="!releasesLoading && !releasesError && releases.length > 0" class="space-y-4 max-h-80 overflow-y-auto">
+                <template x-for="r in releases" :key="r.tag_name">
+                    <div class="border border-slate-200 rounded-xl p-4 bg-white">
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <span class="font-bold text-slate-800" x-text="r.version || r.tag_name"></span>
+                            <span class="text-xs text-slate-500" x-text="formatReleaseDate(r.published_at)"></span>
+                        </div>
+                        <div class="text-sm text-slate-600 prose prose-slate prose-sm max-w-none prose-p:my-1 prose-ul:my-2 prose-li:my-0 prose-headings:font-bold prose-a:text-sky-600 prose-a:underline" x-html="r.bodyHtml"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-10">
+            <h2 class="text-lg font-black text-amber-900 mb-2">Outils de Maintenance / Migration des données</h2>
+            <p class="text-sm text-amber-800 mb-4">Après une mise à jour vers la V2.0.0, exécutez une fois la migration pour convertir les données locales (agents, config, grilles, campagnes) au format V2.</p>
+            <div class="flex flex-wrap gap-3 items-center mb-4">
+                <button type="button"
+                        @click="runV2MigrationClick()"
+                        :disabled="migrationRunning || !rootHandle"
+                        class="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-6 py-3 rounded-xl shadow transition-colors">
+                    <span x-text="migrationRunning ? 'Migration en cours...' : 'Lancer la migration V2.0.0'"></span>
+                </button>
+                <span x-show="!rootHandle" class="text-sm text-amber-700">Sélectionnez d’abord le dossier racine (depuis une autre page ou en rechargeant).</span>
+            </div>
+            <div x-show="migrationLogs.length > 0" class="mt-3 p-4 bg-white border border-amber-200 rounded-xl font-mono text-xs text-slate-700 whitespace-pre-wrap max-h-48 overflow-y-auto" x-text="migrationLogs.join('\n')"></div>
+        </div>
+
+        <div class="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-700 mb-10">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 bg-emerald-900/50 rounded-full flex items-center justify-center text-2xl text-emerald-400">&#x1F4BB;</div>
+                <h2 class="text-xl font-black text-slate-100">Déploiement</h2>
+            </div>
+            <p class="text-slate-400 text-sm mb-4">Lancez la mise à jour depuis le dépôt configuré ci-dessous. Les logs s'affichent en temps réel ci-dessous.</p>
+            <div class="flex gap-3 mb-4">
+                <button type="button"
+                        @click="runUpdateFromDeployPage()"
+                        :disabled="deployRunning || !rootHandle"
+                        class="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow transition-all">
+                    <span x-text="deployRunning ? 'Mise à jour en cours...' : 'Lancer la mise à jour'"></span>
+                </button>
+            </div>
+            <div x-ref="deployTerminal" class="bg-slate-900 rounded-xl border border-slate-700 p-4 h-64 overflow-y-auto text-emerald-400 font-mono text-xs space-y-1"
+                 x-effect="deployLogs.length && $refs.deployTerminal && ($refs.deployTerminal.scrollTop = $refs.deployTerminal.scrollHeight)">
+                <template x-for="(line, i) in deployLogs" :key="i">
+                    <div class="font-mono text-xs" x-text="line"></div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 bg-sky-100 rounded-full flex items-center justify-center text-2xl">🔄</div>
+                <h2 class="text-xl font-black text-slate-800">Source de mise à jour (GitHub)</h2>
+            </div>
+            <p class="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm font-medium"><strong>Il est extrêmement déconseillé de modifier ces paramètres</strong> sauf en cas de changement de dépôt ou de procédure de déploiement. Une mauvaise configuration peut empêcher les mises à jour de l'application.</p>
+            <!-- Mode affichage : source configurée, pas d'édition -->
+            <div x-show="(appConfig.updateSource.repoOwner || '').trim() && (appConfig.updateSource.repoName || '').trim() && !updateSourceEditing" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Propriétaire du dépôt</label>
+                    <div class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm text-slate-600" x-text="appConfig.updateSource.repoOwner"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Nom du dépôt</label>
+                    <div class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm text-slate-600" x-text="appConfig.updateSource.repoName"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Token (optionnel)</label>
+                    <div class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-sm text-slate-500 font-mono" x-text="(appConfig.updateSource.token || '').trim() ? '••••••••••••' : 'Non renseigné'"></div>
+                </div>
+                <div class="pt-2">
+                    <button type="button" @click="startUpdateSourceEdit()" class="bg-sky-600 hover:bg-sky-700 text-white font-bold px-6 py-3 rounded-xl shadow transition-colors">
+                        Modifier
+                    </button>
+                </div>
+            </div>
+            <!-- Mode édition : pas de source ou modification en cours -->
+            <div x-show="!(appConfig.updateSource.repoOwner || '').trim() || !(appConfig.updateSource.repoName || '').trim() || updateSourceEditing" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Propriétaire du dépôt</label>
+                    <input type="text" x-model="updateSourceEdit.repoOwner" placeholder="ex: mon-org ou mon-user" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Nom du dépôt</label>
+                    <input type="text" x-model="updateSourceEdit.repoName" placeholder="ex: hq-app" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-black text-slate-400 uppercase mb-1">Token (optionnel, pour dépôt privé)</label>
+                    <input type="password" x-model="updateSourceEdit.token" placeholder="Token en lecture seule" class="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm" autocomplete="off">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" x-show="(appConfig.updateSource.repoOwner || '').trim() && (appConfig.updateSource.repoName || '').trim() && updateSourceEditing" @click="cancelUpdateSourceEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-6 py-3 rounded-xl transition-colors">
+                        Annuler
+                    </button>
+                    <button type="button" @click="saveUpdateSource()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">
+                        💾 Sauvegarder
+                    </button>
+                </div>
+            </div>
+        </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

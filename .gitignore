@@ -1,0 +1,23 @@
+# Données confidentielles / personnelles
+users.csv
+Campagnes/
+Data_Stats/
+
+# Config / données sensibles — dossier entier en local-only (ne pas versionner)
+App_Sources/config/
+
+# OS / éditeur
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs / temporaires
+*.log
+.cache/
+.cursorrules
+
+# Ignorer tous les fichiers Markdown par défaut
+*.md
+# Autoriser uniquement le README
+!README.md

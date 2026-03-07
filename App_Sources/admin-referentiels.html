@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Référentiels et paramètres | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-5xl mx-auto py-16 px-6">
+        <div class="mb-12 flex items-start justify-between gap-3">
+            <div>
+                <a href="admin.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Hub</a>
+                <h1 class="text-4xl font-black text-indigo-900 tracking-tight mt-2">Référentiels et paramètres</h1>
+                <p class="text-slate-500 mt-2 font-medium">Choisissez le module à administrer</p>
+            </div>
+            <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#admin-referentiels'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors shrink-0" title="Aide : Référentiels">?</button>
+        </div>
+
+        <div class="grid gap-8 grid-cols-2 md:grid-cols-3" x-data="{
+            tiles: [
+                { href: 'admin-agents.html', icon: '👥', bg: 'bg-emerald-100', title: 'Agents', desc: 'Profils agents : nom, site, manager' },
+                { href: 'admin-managers.html', icon: '👔', bg: 'bg-indigo-100', title: 'Managers', desc: 'Lien hiérarchique : nom, email' },
+                { href: 'admin-superviseurs.html', icon: '📋', bg: 'bg-purple-100', title: 'Superviseurs', desc: 'Gérer les superviseurs (évaluateurs) et leur poids en %' },
+                { href: 'admin-sites.html', icon: '🏢', bg: 'bg-sky-100', title: 'Sites', desc: 'Ajouter et gérer les sites' },
+                { href: 'admin-duree.html', icon: '⏱️', bg: 'bg-amber-100', title: 'Communications', desc: 'Courte, moyenne, longue' },
+                { href: 'admin-offres.html', icon: '📋', bg: 'bg-indigo-100', title: 'Types d\'offres', desc: 'Ajouter et gérer les types d\'offres' },
+                { href: 'admin-criteres.html', icon: '⚖️', bg: 'bg-indigo-100', title: 'Grille', desc: 'Catégories, critères, barèmes et tooltips' },
+                { href: 'admin-prompt.html', icon: '🤖', bg: 'bg-violet-100', title: 'Prompt IA', desc: 'Prompts bilan et commentaire d\'évaluation' },
+                { href: 'admin-emails.html', icon: '✉️', bg: 'bg-emerald-100', title: 'Modèles d\'emails', desc: 'Objet et corps des mails d\'envoi de bilan (scoring / entretien)' }
+            ]
+        }">
+            <template x-for="t in tiles" :key="t.href">
+                <a :href="t.href" class="group bg-white p-8 rounded-[2.5rem] shadow-xl hover:shadow-indigo-100 border border-slate-100 transition-all text-center min-w-0">
+                    <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform" :class="t.bg">
+                        <span class="text-4xl" x-text="t.icon"></span>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 uppercase tracking-tighter" x-text="t.title"></h2>
+                    <p class="text-xs text-slate-400 mt-2" x-text="t.desc"></p>
+                </a>
+            </template>
+        </div>
+    </main>
+</body>
+</html>

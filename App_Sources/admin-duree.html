@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Durée des communications | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-2xl mx-auto py-10 px-6">
+        <div class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-3">
+                <div>
+                    <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+                    <h1 class="text-3xl font-black text-indigo-900 mt-2">Durée des communications</h1>
+                </div>
+                <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#admin-duree'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors" title="Aide : Durée des communications">?</button>
+            </div>
+            <button @click="saveAppConfig()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">
+                💾 SAUVEGARDER
+            </button>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <p class="text-sm text-slate-500 mb-6">Définissez deux seuils : la durée max pour « Courte », puis la durée max pour « Moyenne ». « Longue » s’applique au-dessus du second seuil.</p>
+
+            <div class="space-y-4">
+                <!-- Courte : seuil max éditable + résumé concret -->
+                <div class="p-4 rounded-2xl border-2 border-emerald-100 bg-emerald-50/50">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-black text-emerald-800 uppercase tracking-wide">Courte</span>
+                        <span class="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded border border-emerald-200">Badge Vert</span>
+                    </div>
+                    <p class="text-xs text-slate-600 mb-3">Durée <strong>inférieure à</strong> :</p>
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1 max-w-[100px]">
+                            <input type="number" x-model.number="appConfig.duration_thresholds.short.min" class="w-full bg-white border border-emerald-200 p-3 rounded-xl font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-emerald-500 text-center">
+                            <span class="absolute right-2 top-3 text-slate-300 text-xs font-bold pointer-events-none">min</span>
+                        </div>
+                        <div class="relative flex-1 max-w-[100px]">
+                            <input type="number" x-model.number="appConfig.duration_thresholds.short.sec" max="59" class="w-full bg-white border border-emerald-200 p-3 rounded-xl font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-emerald-500 text-center">
+                            <span class="absolute right-2 top-3 text-slate-300 text-xs font-bold pointer-events-none">sec</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-emerald-700 mt-2 font-medium">→ Moins de <span x-text="(appConfig.duration_thresholds.short.min || 0) + ' min ' + (appConfig.duration_thresholds.short.sec ?? 0) + ' s'"></span></p>
+                </div>
+
+                <!-- Moyenne : De [short] à [champs medium] -->
+                <div class="p-4 rounded-2xl border-2 border-amber-100 bg-amber-50/50">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <span class="text-sm font-black text-amber-800 uppercase tracking-wide">Moyenne</span>
+                        <span class="text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded border border-amber-200">Badge Orange</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs text-slate-600">De</span>
+                        <div class="relative w-16">
+                            <div class="w-full bg-amber-100/80 border border-amber-200 p-2.5 rounded-xl font-bold text-indigo-900 text-center text-sm cursor-default" x-text="appConfig.duration_thresholds.short.min ?? 0"></div>
+                            <span class="absolute right-1.5 top-2.5 text-slate-400 text-[10px] font-bold pointer-events-none">min</span>
+                        </div>
+                        <div class="relative w-16">
+                            <div class="w-full bg-amber-100/80 border border-amber-200 p-2.5 rounded-xl font-bold text-indigo-900 text-center text-sm cursor-default" x-text="appConfig.duration_thresholds.short.sec ?? 0"></div>
+                            <span class="absolute right-1.5 top-2.5 text-slate-400 text-[10px] font-bold pointer-events-none">sec</span>
+                        </div>
+                        <span class="text-xs text-slate-600">à</span>
+                        <div class="relative w-16">
+                            <input type="number" x-model.number="appConfig.duration_thresholds.medium.min" class="w-full bg-white border border-amber-200 p-2.5 rounded-xl font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-amber-500 text-center text-sm">
+                            <span class="absolute right-1.5 top-2.5 text-slate-300 text-[10px] font-bold pointer-events-none">min</span>
+                        </div>
+                        <div class="relative w-16">
+                            <input type="number" x-model.number="appConfig.duration_thresholds.medium.sec" max="59" class="w-full bg-white border border-amber-200 p-2.5 rounded-xl font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-amber-500 text-center text-sm">
+                            <span class="absolute right-1.5 top-2.5 text-slate-300 text-[10px] font-bold pointer-events-none">sec</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Longue : plage dérivée, non éditable -->
+                <div class="p-4 rounded-2xl border-2 border-rose-100 bg-rose-50/50">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-black text-rose-800 uppercase tracking-wide">Longue</span>
+                        <span class="text-xs font-bold text-rose-600 bg-rose-100 px-2 py-1 rounded border border-rose-200">Badge Rouge</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs text-slate-600">Au-dessus de</span>
+                        <div class="relative w-16">
+                            <div class="w-full bg-rose-100/80 border border-rose-200 p-2.5 rounded-xl font-bold text-indigo-900 text-center text-sm cursor-default" x-text="appConfig.duration_thresholds.medium.min ?? 0"></div>
+                            <span class="absolute right-1.5 top-2.5 text-slate-400 text-[10px] font-bold pointer-events-none">min</span>
+                        </div>
+                        <div class="relative w-16">
+                            <div class="w-full bg-rose-100/80 border border-rose-200 p-2.5 rounded-xl font-bold text-indigo-900 text-center text-sm cursor-default" x-text="appConfig.duration_thresholds.medium.sec ?? 0"></div>
+                            <span class="absolute right-1.5 top-2.5 text-slate-400 text-[10px] font-bold pointer-events-none">sec</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Dashboard Régional | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="js/pdfBilan.js"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,doc-modal.js,nav.js,../config/config_grille.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/StatsRepository.js"></script>
+    <script src="js/UIComponents.js"></script>
+    <script src="js/Agent360ChartsView.js"></script>
+    <script src="js/ProductionChartsView.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/fr.js"></script>
+    <script>
+        var _isoDate = function(d) {
+            return d.getFullYear() + '-' + ('0'+(d.getMonth()+1)).slice(-2) + '-' + ('0'+d.getDate()).slice(-2);
+        };
+        document.addEventListener('alpine:init', function () {
+            window.Alpine && window.Alpine.store('dashboard', {
+                activeTab: 'campagnes',
+                selectedAgent360: '',
+                selectedDateFrom: '',
+                selectedDateTo: '',
+                prodPerimeter: 'global',
+                prodSelectedManager: ''
+            });
+        });
+        function getPresetRange(presetName) {
+            var t = new Date();
+            var ref = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12, 0, 0, 0);
+            var y, m, first, last, dow, mondayOffset, mon, sun;
+            switch (presetName) {
+                case 'ce_mois':
+                    y = ref.getFullYear();
+                    m = ref.getMonth();
+                    first = new Date(y, m, 1, 12, 0, 0, 0);
+                    last = new Date(y, m + 1, 0, 12, 0, 0, 0);
+                    return [_isoDate(first), _isoDate(last)];
+                case 'mois_precedent':
+                    ref.setMonth(ref.getMonth() - 1);
+                    y = ref.getFullYear();
+                    m = ref.getMonth();
+                    first = new Date(y, m, 1, 12, 0, 0, 0);
+                    last = new Date(y, m + 1, 0, 12, 0, 0, 0);
+                    return [_isoDate(first), _isoDate(last)];
+                case 'cette_semaine':
+                    dow = ref.getDay();
+                    mondayOffset = dow === 0 ? -6 : 1 - dow;
+                    ref.setDate(ref.getDate() + mondayOffset);
+                    mon = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
+                    sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 12, 0, 0, 0);
+                    return [_isoDate(mon), _isoDate(sun)];
+                case 'semaine_precedente':
+                    dow = ref.getDay();
+                    mondayOffset = dow === 0 ? -6 : 1 - dow;
+                    ref.setDate(ref.getDate() + mondayOffset - 7);
+                    mon = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
+                    sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 12, 0, 0, 0);
+                    return [_isoDate(mon), _isoDate(sun)];
+                case 'hier':
+                    ref.setDate(ref.getDate() - 1);
+                    return [_isoDate(ref), _isoDate(ref)];
+                case 'cette_annee':
+                    y = ref.getFullYear();
+                    first = new Date(y, 0, 1, 12, 0, 0, 0);
+                    last = new Date(y, 11, 31, 12, 0, 0, 0);
+                    return [_isoDate(first), _isoDate(last)];
+                default:
+                    return [null, null];
+            }
+        }
+        window.getPresetRange = getPresetRange;
+        function getShiftedRange(kind, direction) {
+            var store = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+            var dateFrom = (store && store.selectedDateFrom) ? store.selectedDateFrom : '';
+            var ref;
+            if (dateFrom) {
+                var p = dateFrom.split('-');
+                ref = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12, 0, 0, 0);
+            } else {
+                var t = new Date();
+                ref = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12, 0, 0, 0);
+            }
+            var y, m, first, last, dow, mondayOffset, mon, sun;
+            if (kind === 'month') {
+                ref.setMonth(ref.getMonth() + direction);
+                y = ref.getFullYear();
+                m = ref.getMonth();
+                first = new Date(y, m, 1, 12, 0, 0, 0);
+                last = new Date(y, m + 1, 0, 12, 0, 0, 0);
+                return [_isoDate(first), _isoDate(last)];
+            }
+            if (kind === 'week') {
+                dow = ref.getDay();
+                mondayOffset = dow === 0 ? -6 : 1 - dow;
+                ref.setDate(ref.getDate() + mondayOffset + 7 * direction);
+                mon = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
+                sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 12, 0, 0, 0);
+                return [_isoDate(mon), _isoDate(sun)];
+            }
+            if (kind === 'day') {
+                ref.setDate(ref.getDate() + direction);
+                return [_isoDate(ref), _isoDate(ref)];
+            }
+            return [null, null];
+        }
+        window.applyShift = function(kind, direction, inputEl) {
+            var r = getShiftedRange(kind, direction);
+            if (!r[0] || !r[1]) return;
+            if (inputEl && inputEl._flatpickr) inputEl._flatpickr.setDate(r, false);
+            var store = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+            if (store) {
+                store.selectedDateFrom = r[0];
+                store.selectedDateTo = r[1];
+            }
+            if (window.refreshDashboardFromFilters) window.refreshDashboardFromFilters();
+        };
+        window.applyPreset = function(presetName, inputEl) {
+            var r = getPresetRange(presetName);
+            if (!r[0] || !r[1]) return;
+            if (inputEl && inputEl._flatpickr) inputEl._flatpickr.setDate(r, false);
+            var store = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+            if (store) {
+                store.selectedDateFrom = r[0];
+                store.selectedDateTo = r[1];
+            }
+            if (window.refreshDashboardFromFilters) window.refreshDashboardFromFilters();
+        };
+        window.initDatePicker = function(element, storeParam) {
+            if (!element || !window.flatpickr) return;
+            var store = storeParam || (window.Alpine && window.Alpine.store && window.Alpine.store('dashboard'));
+            if (!store) return;
+            var defaultFrom = store.selectedDateFrom || '';
+            var defaultTo = store.selectedDateTo || '';
+            if (!defaultFrom || !defaultTo) {
+                var t = new Date();
+                var ref = new Date(t.getFullYear(), t.getMonth(), t.getDate(), 12, 0, 0, 0);
+                var first = new Date(ref.getFullYear(), ref.getMonth(), 1, 12, 0, 0, 0);
+                var last = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 12, 0, 0, 0);
+                defaultFrom = _isoDate(first);
+                defaultTo = _isoDate(last);
+                store.selectedDateFrom = defaultFrom;
+                store.selectedDateTo = defaultTo;
+            }
+            window.flatpickr(element, {
+                mode: 'range',
+                dateFormat: 'Y-m-d',
+                altInput: true,
+                altFormat: 'd-m-Y',
+                locale: 'fr',
+                defaultDate: [defaultFrom, defaultTo],
+                onChange: function(selectedDates, dateStr, instance) {
+                    var s = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+                    if (!s) return;
+                    if (selectedDates.length >= 2) {
+                        s.selectedDateFrom = instance.formatDate(selectedDates[0], 'Y-m-d');
+                        s.selectedDateTo = instance.formatDate(selectedDates[1], 'Y-m-d');
+                    } else if (selectedDates.length === 1) {
+                        s.selectedDateFrom = instance.formatDate(selectedDates[0], 'Y-m-d');
+                        s.selectedDateTo = s.selectedDateFrom;
+                    }
+                    if (window.refreshDashboardFromFilters) window.refreshDashboardFromFilters();
+                }
+            });
+        };
+        function refreshProdFromStore(rootHandle, allAgents, managers) {
+            var s = window.Alpine && window.Alpine.store('dashboard');
+            if (!s) return;
+            refreshProductionDashboard(rootHandle, s.prodPerimeter, s.prodSelectedManager, allAgents, managers, s.selectedDateFrom || null, s.selectedDateTo || null);
+        }
+        function refresh360FromStore(rootHandle, campagnesHandle, allAgents) {
+            var s = window.Alpine && window.Alpine.store('dashboard');
+            if (!s) return;
+            var agentId = parseInt(s.selectedAgent360);
+            if (isNaN(agentId)) return;
+            var agent = allAgents && allAgents.find(function(a) { return +a.id === agentId; });
+            var name = agent && typeof getAgentDisplayName === 'function' ? getAgentDisplayName(agent) : '';
+            refreshAgent360Charts(rootHandle, campagnesHandle, agentId, name, allAgents, s.selectedDateFrom || null, s.selectedDateTo || null);
+        }
+        window.refreshProdFromStore = refreshProdFromStore;
+        window.refresh360FromStore = refresh360FromStore;
+        function refreshProductionDashboard(rootHandle, perimeter, selectedManagerId, agentsList, managersList, dateFrom, dateTo) {
+            var container = document.getElementById('production-charts-container');
+            var repo = window.HQApp && window.HQApp.StatsRepository;
+            var view = window.HQApp && window.HQApp.ProductionChartsView;
+            if (!container || !repo || !view) return;
+            var agentsRef = (agentsList && Array.isArray(agentsList) && agentsList.length > 0)
+                ? agentsList
+                : (typeof window.LISTE_AGENTS !== 'undefined' && Array.isArray(window.LISTE_AGENTS) ? window.LISTE_AGENTS : []);
+            view.destroy(container);
+            repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }).then(function (production) {
+                agentsList = agentsList || [];
+                managersList = managersList || [];
+                var agentIdsInScope = null;
+                if (perimeter === 'manager' && selectedManagerId != null && selectedManagerId !== '') {
+                    var mid = Number(selectedManagerId);
+                    agentIdsInScope = {};
+                    agentsList.forEach(function (a) {
+                        if (Number(a.managerId) === mid) agentIdsInScope[a.id] = true;
+                    });
+                }
+                var agentIdsArray = null;
+                if (agentIdsInScope !== null) {
+                    agentIdsArray = Object.keys(agentIdsInScope).map(function (k) { return Number(k); }).filter(function (n) { return !isNaN(n); });
+                }
+
+                var dto = (typeof repo.aggregatePerimeterStats === 'function')
+                    ? repo.aggregatePerimeterStats(production || {}, agentIdsArray)
+                    : { production: production || {} };
+
+                view.renderProductionDashboard(container, dto);
+            });
+        }
+        function refreshAgent360Charts(rootHandle, campagnesHandle, agentId, agentDisplayName, agentsList, dateFrom, dateTo) {
+            var container = document.getElementById('agent360-charts-container');
+            if (!container) return;
+            var view = window.HQApp && window.HQApp.Agent360ChartsView;
+            if (!view) return;
+            view.destroy(container);
+            if (agentId == null || agentId === '' || isNaN(Number(agentId))) return;
+            var repo = window.HQApp && window.HQApp.StatsRepository;
+            if (!repo) return;
+            var agentsRef = (agentsList && Array.isArray(agentsList) && agentsList.length > 0)
+                ? agentsList
+                : (typeof window.LISTE_AGENTS !== 'undefined' && Array.isArray(window.LISTE_AGENTS) ? window.LISTE_AGENTS : []);
+            Promise.all([
+                repo.loadQualiteHistory(rootHandle, campagnesHandle, agentId, { agentDisplayName: agentDisplayName || '' }),
+                repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+            ]).then(function (results) {
+                view.renderAgent360(container, { qualiteHistory: results[0] || [], production: results[1] || {}, agentId: agentId });
+            });
+        }
+        window.refreshProductionDashboard = refreshProductionDashboard;
+        window.refreshAgent360Charts = refreshAgent360Charts;
+    </script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init()">
+
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <div :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 flex h-[calc(100vh-68px)]">
+        <aside class="w-80 bg-white border-r border-slate-200 p-8 overflow-y-auto">
+            <!-- Bloc Campagnes -->
+            <div x-show="$store.dashboard.activeTab === 'campagnes'">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Campagnes Régionales</h3>
+                <nav class="space-y-3">
+                    <template x-for="folder in folders" :key="folder.name">
+                        <button @click="loadCampaign(folder)" 
+                             :class="selectedFolder === folder.name ? 'bg-indigo-600 text-white shadow-lg' : (folder.status === 'closed' ? 'bg-slate-100/80 hover:bg-slate-100 text-slate-600' : 'hover:bg-slate-50 text-slate-600')"
+                             class="w-full text-left p-4 rounded-2xl transition-all flex items-center gap-3 group">
+                            <span class="shrink-0 text-base" :title="folder.campaignType === 'review' ? 'Entretien' : 'Scoring'" x-text="folder.campaignType === 'review' ? '🗣️' : '📊'"></span>
+                            <span class="font-bold text-sm truncate flex-1 min-w-0" x-text="folder.name"></span>
+                            <span x-show="folder.status === 'closed'" class="shrink-0 bg-gray-200 text-gray-700 text-[10px] font-bold px-2 py-0.5 rounded">Clôturée</span>
+                            <span x-show="folder.status !== 'closed'" class="text-lg opacity-0 group-hover:opacity-100 transition-opacity shrink-0">→</span>
+                        </button>
+                    </template>
+                </nav>
+            </div>
+            <!-- Période partagée (Production et Agent 360°) -->
+            <div x-show="$store.dashboard.activeTab === 'production' || $store.dashboard.activeTab === 'agent360'" class="w-full flex flex-col gap-4 mb-4">
+                <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Période</label>
+                <div x-init="Alpine.nextTick(function(){ initDatePicker($refs.datePickerInput); })">
+                    <input type="text" x-ref="datePickerInput" readonly placeholder="Du … au …"
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        <button type="button" @click="window.applyPreset('cette_annee', $refs.datePickerInput)"
+                            class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Cette année</button>
+                        <button type="button" @click="window.applyPreset('ce_mois', $refs.datePickerInput)"
+                            class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Ce mois</button>
+                        <button type="button" @click="window.applyPreset('cette_semaine', $refs.datePickerInput)"
+                            class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Cette semaine</button>
+                        <button type="button" @click="window.applyPreset('hier', $refs.datePickerInput)"
+                            class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Hier</button>
+                    </div>
+                    <div class="mt-3 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-slate-600">Mois</span>
+                            <div class="flex gap-1">
+                                <button type="button" @click="window.applyShift('month', -1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">−</button>
+                                <button type="button" @click="window.applyShift('month', 1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">+</button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-slate-600">Semaine</span>
+                            <div class="flex gap-1">
+                                <button type="button" @click="window.applyShift('week', -1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">−</button>
+                                <button type="button" @click="window.applyShift('week', 1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">+</button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-slate-600">Jour</span>
+                            <div class="flex gap-1">
+                                <button type="button" @click="window.applyShift('day', -1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">−</button>
+                                <button type="button" @click="window.applyShift('day', 1, $refs.datePickerInput)" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-600 hover:text-indigo-700 font-bold text-sm transition-colors">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Bloc Production -->
+            <div x-show="$store.dashboard.activeTab === 'production'" class="flex flex-col gap-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Filtres Production</h3>
+                <!-- Périmètre -->
+                <div class="w-full">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Périmètre</label>
+                    <select x-model="$store.dashboard.prodPerimeter"
+                        @change="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                        <option value="global">Global</option>
+                        <option value="manager">Équipe (Manager)</option>
+                    </select>
+                </div>
+                <template x-if="$store.dashboard.prodPerimeter === 'manager'">
+                    <div class="w-full">
+                        <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Manager</label>
+                        <select x-model="$store.dashboard.prodSelectedManager"
+                            @change="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— Choisir —</option>
+                            <template x-for="m in (managers || [])" :key="m.id">
+                                <option :value="m.id" x-text="m.nom || ('Manager ' + m.id)"></option>
+                            </template>
+                        </select>
+                    </div>
+                </template>
+                <button type="button"
+                    @click="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                    class="w-full px-4 py-2 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                    Rafraîchir les données
+                </button>
+            </div>
+            <!-- Bloc Agent 360° -->
+            <div x-show="$store.dashboard.activeTab === 'agent360'" class="flex flex-col gap-4">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Filtres Agent 360°</h3>
+                <!-- Agent -->
+                <div class="w-full">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Agent</label>
+                    <select x-model="$store.dashboard.selectedAgent360"
+                        @change="refresh360FromStore(rootHandle, campagnesHandle, allAgents); updateDashboardUrl()"
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                        <option value="">— Choisir un agent —</option>
+                        <template x-for="a in (allAgents || [])" :key="a.id">
+                            <option :value="a.id" x-text="getAgentDisplayName(a)"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 p-8 overflow-y-auto bg-slate-50">
+            <!-- Barre d'onglets -->
+            <div class="flex gap-1 mb-6 border-b border-slate-200 pb-2 items-center">
+                <button type="button" @click="$store.dashboard.activeTab = 'campagnes'; updateDashboardUrl()"
+                    :class="$store.dashboard.activeTab === 'campagnes' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-4 py-2 rounded-lg font-bold text-sm transition">🎯 Campagnes</button>
+                <button type="button" @click="$store.dashboard.activeTab = 'production'; updateDashboardUrl()"
+                    :class="$store.dashboard.activeTab === 'production' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-4 py-2 rounded-lg font-bold text-sm transition">👥 Production & Équipes</button>
+                <button type="button" @click="$store.dashboard.activeTab = 'agent360'; updateDashboardUrl()"
+                    :class="$store.dashboard.activeTab === 'agent360' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-4 py-2 rounded-lg font-bold text-sm transition">👤 Dossier Agent 360°</button>
+                <button type="button" @click="copyDashboardShareLink()" class="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-sm bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition" title="Copier le lien de cette vue">🔗 Partager cette vue</button>
+            </div>
+
+            <!-- Onglet Campagnes (contenu actuel) -->
+            <div x-show="$store.dashboard.activeTab === 'campagnes'" class="max-w-7xl mx-auto">
+            <div x-show="selectedFolder && isLoadingCampaign" class="flex-1 flex flex-col items-center justify-center text-slate-500">
+                <svg class="animate-spin h-10 w-10 text-indigo-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="text-lg font-medium">Chargement de la campagne en cours...</p>
+            </div>
+            <template x-if="selectedFolder && !isLoadingCampaign">
+                <div class="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
+                    <!-- HEADER & FILTRES -->
+                    <header class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                        <div class="flex items-center gap-3">
+                            <div>
+                                <h2 class="text-3xl font-black text-indigo-900 tracking-tight" x-text="selectedFolder"></h2>
+                                <p x-show="campaignConfig && campaignConfig.period_start" class="text-slate-500 text-sm mt-1" x-text="(campaignConfig && campaignConfig.period_start) ? ('Période évaluée : du ' + formatDateToFR(campaignConfig.period_start) + ' au ' + formatDateToFR(campaignConfig.period_end)) : ''"></p>
+                                <p class="text-slate-500 font-medium mt-1 uppercase text-xs tracking-widest">Analyse de la performance</p>
+                            </div>
+                            <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#dashboard'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors" title="Aide : Dashboard">?</button>
+                        </div>
+                        <div class="flex gap-4 items-center">
+                            <div class="flex gap-3">
+                            <!-- Filtre Site -->
+                            <div class="relative">
+                                <select x-model="dashboardFilters.site" @change="applyDashboardFilters(); updateDashboardUrl()" class="appearance-none bg-slate-100 border-none text-sm font-bold text-slate-700 py-3 pl-4 pr-10 rounded-xl focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                                    <option value="">🌍 Tous les sites</option>
+                                    <template x-for="site in availableFilterSites" :key="site">
+                                        <option :value="site" x-text="site"></option>
+                                    </template>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </div>
+                            </div>
+                            <!-- Filtre Offre -->
+                            <div class="relative">
+                                <select x-model="dashboardFilters.offer" @change="applyDashboardFilters(); updateDashboardUrl()" class="appearance-none bg-slate-100 border-none text-sm font-bold text-slate-700 py-3 pl-4 pr-10 rounded-xl focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                                    <option value="">📦 Toutes les offres</option>
+                                    <template x-for="offer in availableFilterOffers" :key="offer">
+                                        <option :value="offer" x-text="offer"></option>
+                                    </template>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <!-- VUE GLOBALE -->
+                    <div class="space-y-6">
+                        <!-- Avancement par superviseur (1ère position) -->
+                        <div x-show="stats.supervisorProgress && stats.supervisorProgress.length > 0" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Avancement par superviseur</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <template x-for="sup in stats.supervisorProgress" :key="sup.id">
+                                    <div class="border border-slate-100 rounded-2xl p-4">
+                                        <p class="text-sm font-bold text-slate-700 mb-2 truncate" :title="sup.nom" x-text="sup.nom"></p>
+                                        <div class="w-full bg-slate-100 rounded-full h-2.5 mb-2">
+                                            <div class="h-2.5 rounded-full transition-all duration-1000"
+                                                 :class="sup.percent >= 100 ? 'bg-emerald-500' : (sup.percent >= 50 ? 'bg-indigo-600' : 'bg-amber-500')"
+                                                 :style="'width: ' + Math.min(sup.percent, 100) + '%'"></div>
+                                        </div>
+                                        <div class="flex justify-between items-center text-xs">
+                                            <span class="text-slate-500" x-text="sup.completed + ' / ' + sup.target"></span>
+                                            <span class="font-black" :class="sup.percent >= 100 ? 'text-emerald-600' : (sup.percent >= 50 ? 'text-indigo-600' : 'text-amber-600')" x-text="sup.percent + '%'"></span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- KPIS -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- KPI 1 -->
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Agents évalués</p>
+                            <p class="text-4xl font-black text-slate-800" x-text="stats.evaluatedAgents"></p>
+                            <p class="text-xs text-slate-400 mt-1" x-text="'Sur ' + stats.totalAgents + ' agents'"></p>
+                        </div>
+                        <!-- KPI 2 -->
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Qualité Moyenne</p>
+                            <div class="flex items-baseline gap-2">
+                                <p class="text-4xl font-black" 
+                                   :class="stats.moyenne >= 8 ? 'text-emerald-500' : (stats.moyenne >= 5 ? 'text-amber-500' : 'text-rose-500')"
+                                   x-text="stats.moyenne"></p>
+                                <span class="text-sm font-bold text-slate-300">/10</span>
+                            </div>
+                        </div>
+                        <!-- KPI 3 -->
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Avancement</p>
+                            <div class="w-full bg-slate-100 rounded-full h-2.5 mb-3">
+                                <div class="bg-indigo-600 h-2.5 rounded-full transition-all duration-1000" :style="'width: ' + stats.progressPercent + '%'"></div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <p class="text-2xl font-black text-slate-800" x-text="stats.completed + ' / ' + stats.totalEvaluationsTarget"></p>
+                                <span class="text-xs font-bold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg" x-text="stats.progressPercent + '%'"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Qualité par Site (pleine largeur) -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Qualité par Site</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="sitesChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Qualité par Offre (pleine largeur) -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Qualité par Offre</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="offersChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- RUBRIQUES (pleine largeur, max 6 par ligne, largeur adaptée au nombre de critères) -->
+                    <div class="w-full grid gap-4" :style="'grid-template-columns: repeat(' + Math.min(6, Object.keys(stats.rubrics || {}).length || 1) + ', 1fr)'">
+                        <template x-for="(percent, catName) in stats.rubrics" :key="catName">
+                            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center min-w-0">
+                                <div class="relative w-20 h-20 flex items-center justify-center mb-2">
+                                    <svg class="w-full h-full transform -rotate-90">
+                                        <circle cx="40" cy="40" r="35" stroke="currentColor" stroke-width="4" fill="transparent" class="text-slate-100"></circle>
+                                        <circle cx="40" cy="40" r="35" stroke="currentColor" stroke-width="4" fill="transparent" 
+                                            :stroke-dasharray="219.9" :stroke-dashoffset="219.9 - (219.9 * percent / 100)"
+                                            :class="percent < 50 ? 'text-rose-500' : (percent < 80 ? 'text-amber-500' : 'text-emerald-500')"
+                                            class="transition-all duration-1000"></circle>
+                                    </svg>
+                                    <span class="absolute text-xl font-black text-slate-700" x-text="percent + '%'"></span>
+                                </div>
+                                <h4 class="text-[10px] font-bold text-slate-500 text-center uppercase leading-tight" x-text="catName"></h4>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- GRAPHIQUE DETAIL -->
+                    <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-[400px]">
+                        <h3 class="font-black text-slate-800 mb-6 uppercase text-xs tracking-widest">Répartition individuelle des notes</h3>
+                        <div class="h-[300px] relative">
+                            <canvas id="dashChart"></canvas>
+                        </div>
+                    </div>
+                    </div> <!-- Fin Vue Globale -->
+
+                </div>
+            </template>
+
+            <template x-if="!selectedFolder">
+                <div class="h-full flex flex-col items-center justify-center text-slate-300">
+                    <div class="bg-white p-12 rounded-[3rem] shadow-xl text-center border border-slate-50">
+                        <span class="text-8xl mb-6 block grayscale">📊</span>
+                        <p class="text-xl font-bold text-slate-400">En attente de sélection</p>
+                        <p class="text-sm mt-2">Choisissez une campagne pour analyser la qualité.</p>
+                    </div>
+                </div>
+            </template>
+            </div>
+            <!-- Fin Onglet Campagnes -->
+
+            <!-- Onglet Production & Équipes -->
+            <div x-show="$store.dashboard.activeTab === 'production'" class="max-w-7xl mx-auto space-y-6">
+                <div id="production-charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Temps (s)</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="prod-telephone-dmt"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Efficacité</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="prod-telephone"></canvas>
+                        </div>
+                    </div>
+                    <div id="prod-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="prod-courriels-volumes"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="prod-watt"></canvas>
+                        </div>
+                    </div>
+                    <div id="prod-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                </div>
+            </div>
+
+            <!-- Onglet Dossier Agent 360° -->
+            <div x-show="$store.dashboard.activeTab === 'agent360'" class="max-w-7xl mx-auto space-y-6">
+                <div id="agent360-charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6" data-agent360-tables-default="collapsed">
+
+                    <!-- Barre de filtres par offre : col-span-2 pour couvrir les 2 charts téléphone -->
+                    <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
+                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
+                        <div id="agent360-tel-filters" class="flex flex-wrap gap-1.5"></div>
+                    </div>
+
+                    <!-- Téléphone - Temps (s) : ancienne position de Qualité -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 id="agent360-dmt-title" class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Temps (s)</h3>
+                            <div id="agent360-tel-dmt-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                        </div>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-telephone-dmt"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Téléphone - Efficacité -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 id="agent360-tel-title" class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Efficacité</h3>
+                            <div id="agent360-tel-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                        </div>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-telephone"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tableau détail par offre : col-span-2 -->
+                    <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-courriels-volumes"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-watt"></canvas>
+                        </div>
+                    </div>
+                    <!-- Tableau détail Watt par circuit : col-span-2 -->
+                    <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Évolution Qualité : dernière position, pleine largeur -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Évolution Qualité</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-qualite"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL BILAN (SUPPRIMÉE CAR DÉPLACÉE DANS PILOTAGE) -->
+</body>
+</html>

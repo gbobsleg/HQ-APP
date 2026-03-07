@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Types d'offres | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-2xl mx-auto py-10 px-6">
+        <div class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-3">
+                <div>
+                    <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+                    <h1 class="text-3xl font-black text-indigo-900 mt-2">Types d'offres</h1>
+                </div>
+                <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#admin-offres'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors" title="Aide : Types d'offres">?</button>
+            </div>
+            <button @click="saveAppConfig()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">
+                💾 SAUVEGARDER
+            </button>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <div class="space-y-4">
+                <div class="flex gap-2">
+                    <input type="text" x-data="{ newOffer: '' }" x-model="newOffer" @keydown.enter="addOffer(newOffer); newOffer=''" placeholder="Nouvelle offre..." class="flex-1 bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <button @click="addOffer($el.previousElementSibling._x_model.get()); $el.previousElementSibling._x_model.set('')" class="bg-indigo-600 hover:bg-indigo-700 text-white w-12 rounded-xl font-black text-xl">+</button>
+                </div>
+
+                <div class="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+                    <template x-for="(offer, index) in appConfig.offers" :key="index">
+                        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 group">
+                            <span class="font-bold text-slate-700 text-sm" x-text="offer"></span>
+                            <button @click="removeOffer(index)" class="text-slate-300 hover:text-rose-500 transition-colors">✕</button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

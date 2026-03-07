@@ -1,0 +1,54 @@
+{
+    "version": 1,
+    "title": "Grille d'exemple - Accueil et Résolution",
+    "sections": [
+        {
+            "id": "section_accueil",
+            "label": "1. Accueil",
+            "fields": [
+                {
+                    "id": "salutation",
+                    "label": "Salutation et présentation",
+                    "max": 2,
+                    "oblig": true,
+                    "hint": "Se présente clairement et adopte un ton courtois.",
+                    "step": 1,
+                    "type": "scoring"
+                },
+                {
+                    "id": "ecoute",
+                    "label": "Écoute active",
+                    "max": 2,
+                    "oblig": true,
+                    "hint": "Laisse l'usager s'exprimer et reformule si nécessaire.",
+                    "step": 1,
+                    "type": "scoring"
+                }
+            ]
+        },
+        {
+            "id": "section_resolution",
+            "label": "2. Résolution de la demande",
+            "fields": [
+                {
+                    "id": "precision",
+                    "label": "Précision de la réponse",
+                    "max": 4,
+                    "oblig": true,
+                    "hint": "Apporte une réponse claire, complète et conforme aux règles.",
+                    "step": 2,
+                    "type": "scoring"
+                },
+                {
+                    "id": "orientation",
+                    "label": "Orientation",
+                    "max": 2,
+                    "oblig": false,
+                    "hint": "Oriente l'usager vers les bons canaux ou services si nécessaire.",
+                    "step": 2,
+                    "type": "scoring"
+                }
+            ]
+        }
+    ]
+}

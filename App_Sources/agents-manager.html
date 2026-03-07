@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Gestion des Agents | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,nav.js,../config/config_grille.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init()">
+
+     <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main class="max-w-4xl mx-auto py-12 px-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 h-fit">
+                <h2 class="text-lg font-bold mb-4 text-indigo-900">Agents</h2>
+                <p class="text-sm text-slate-500 mb-4">Gestion complète via la page Admin.</p>
+                <a href="admin-agents.html" class="block w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition text-center">
+                    Gérer les agents
+                </a>
+            </div>
+
+            <div class="md:col-span-2 bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Agent</th>
+                            <th class="p-4 text-xs font-black text-slate-400 uppercase">Site</th>
+                            <th class="p-4"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(agent, index) in agents" :key="agent.id">
+                            <tr class="border-t border-slate-100 hover:bg-slate-50 transition">
+                                <td class="p-4 font-bold text-slate-700" x-text="getAgentDisplayName(agent)"></td>
+                                <td class="p-4 text-sm text-slate-500" x-text="getSiteName(agent.siteId)"></td>
+                                <td class="p-4 text-right">
+                                    <button @click="deleteAgent(index)" class="text-rose-500 hover:bg-rose-50 px-3 py-1 rounded-lg transition">🗑️</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

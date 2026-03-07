@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Gestion Agents | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-6xl mx-auto py-10 px-6">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+                <h1 class="text-3xl font-black text-indigo-900 mt-2">Gestion des Agents</h1>
+            </div>
+            <div class="bg-white px-6 py-3 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-[10px] font-black text-slate-400 uppercase block leading-none mb-1">Affichés / Total</span>
+                <span class="text-2xl font-black text-indigo-600" x-text="getFilteredAndSortedAgents().length + ' / ' + agents.length"></span>
+            </div>
+        </div>
+
+        <!-- Filtres -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6 flex flex-wrap items-end gap-4">
+            <div class="flex-1 min-w-[180px]">
+                <label class="text-[10px] font-black text-slate-400 uppercase ml-2 block mb-1">Recherche</label>
+                <input type="text" x-model="agentFilterSearch" placeholder="Nom, prénom, matricule, email…" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-medium text-sm transition-all">
+            </div>
+            <div class="w-44">
+                <label class="text-[10px] font-black text-slate-400 uppercase ml-2 block mb-1">Site</label>
+                <select x-model="agentFilterSiteId" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold text-sm">
+                    <option value="">Tous les sites</option>
+                    <template x-for="s in sites" :key="s.id">
+                        <option :value="s.id" x-text="s.nom"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="w-48">
+                <label class="text-[10px] font-black text-slate-400 uppercase ml-2 block mb-1">Manager</label>
+                <select x-model="agentFilterManagerId" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold text-sm">
+                    <option value="">Tous</option>
+                    <template x-for="m in managers" :key="m.id">
+                        <option :value="m.id" x-text="m.nom"></option>
+                    </template>
+                </select>
+            </div>
+            <button @click="agentFilterSearch = ''; agentFilterSiteId = ''; agentFilterManagerId = ''" class="px-4 py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-50 transition-colors">Réinitialiser</button>
+        </div>
+
+        <!-- Section dépliable : Nouveau profil -->
+        <div class="mb-6" x-data="{ formOpen: false }">
+            <button @click="formOpen = !formOpen" class="w-full flex items-center justify-between bg-white p-5 rounded-2xl shadow-lg border border-slate-100 hover:border-indigo-200 transition-colors text-left">
+                <span class="text-sm font-black text-slate-800 uppercase tracking-wider">Nouveau profil agent</span>
+                <span class="text-indigo-500 font-bold" x-text="formOpen ? '− Réduire' : '+ Ouvrir'"></span>
+            </button>
+            <div x-show="formOpen" x-transition class="bg-white mt-2 p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+                <div class="space-y-4" x-data="{ nom: '', prenom: '', matricule: '', email: '', siteId: '', managerId: '' }">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Nom</label>
+                            <input type="text" x-model="nom" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all" placeholder="NOM">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Prénom</label>
+                            <input type="text" x-model="prenom" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all" placeholder="Prénom">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Matricule</label>
+                        <input type="text" x-model="matricule" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all" placeholder="Matricule (optionnel)">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Email</label>
+                        <input type="email" x-model="email" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all" placeholder="email@exemple.fr (optionnel)">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Site</label>
+                            <select x-model="siteId" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                <option value="" disabled selected>Choisir un site...</option>
+                                <template x-for="s in sites" :key="s.id">
+                                    <option :value="s.id" x-text="s.nom"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Manager (optionnel)</label>
+                            <select x-model="managerId" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                <option value="">Aucun / Autonome</option>
+                                <template x-for="m in managers" :key="m.id">
+                                    <option :value="m.id" x-text="m.nom"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                    <button @click="addAgent(nom, prenom, matricule, email, siteId, managerId); nom=''; prenom=''; matricule=''; email=''; siteId=''; managerId='';" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                        Ajouter l'agent
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Liste des agents (pleine largeur) -->
+        <div class="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto max-h-[calc(100vh-18rem)] overflow-y-auto">
+                <table class="w-full text-left border-collapse min-w-[700px] table-fixed">
+                    <thead class="bg-slate-50 border-b sticky top-0 z-10">
+                        <tr>
+                            <th class="p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[18%]">
+                                <button type="button" @click="setAgentSort('conseiller')" class="flex items-center gap-1 hover:text-indigo-600 transition-colors text-left w-full">
+                                    Conseiller
+                                    <span x-show="agentSortBy === 'conseiller'" x-text="agentSortDir === 1 ? '↑' : '↓'"></span>
+                                </button>
+                            </th>
+                            <th class="p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[12%]">
+                                <button type="button" @click="setAgentSort('matricule')" class="flex items-center gap-1 hover:text-indigo-600 transition-colors text-left w-full">
+                                    Matricule
+                                    <span x-show="agentSortBy === 'matricule'" x-text="agentSortDir === 1 ? '↑' : '↓'"></span>
+                                </button>
+                            </th>
+                            <th class="p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[20%]">
+                                <button type="button" @click="setAgentSort('email')" class="flex items-center gap-1 hover:text-indigo-600 transition-colors text-left w-full">
+                                    Email
+                                    <span x-show="agentSortBy === 'email'" x-text="agentSortDir === 1 ? '↑' : '↓'"></span>
+                                </button>
+                            </th>
+                            <th class="p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[14%]">
+                                <button type="button" @click="setAgentSort('site')" class="flex items-center gap-1 hover:text-indigo-600 transition-colors text-left w-full">
+                                    Équipe / Site
+                                    <span x-show="agentSortBy === 'site'" x-text="agentSortDir === 1 ? '↑' : '↓'"></span>
+                                </button>
+                            </th>
+                            <th class="p-2 text-[10px] font-black text-slate-400 uppercase tracking-widest w-[14%]">
+                                <button type="button" @click="setAgentSort('manager')" class="flex items-center gap-1 hover:text-indigo-600 transition-colors text-left w-full">
+                                    Manager
+                                    <span x-show="agentSortBy === 'manager'" x-text="agentSortDir === 1 ? '↑' : '↓'"></span>
+                                </button>
+                            </th>
+                            <th class="p-2 w-[10%]"></th>
+                        </tr>
+                    </thead>
+                    <tbody x-data="{ editingId: null, editNom: '', editPrenom: '', editMatricule: '', editEmail: '', editSiteId: null, editManagerId: null }">
+                        <template x-for="(agent, index) in getFilteredAndSortedAgents()" :key="agent.id">
+                            <tr class="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                <td class="p-2 align-middle">
+                                    <div x-show="editingId !== agent.id" class="flex items-center gap-2 min-w-0">
+                                        <div class="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-black text-[10px] shrink-0" x-text="(agent.nom || '').charAt(0)"></div>
+                                        <span class="font-bold text-slate-700 text-xs truncate" x-text="getAgentDisplayName(agent)"></span>
+                                    </div>
+                                    <div x-show="editingId === agent.id" class="flex gap-1 min-w-0">
+                                        <input type="text" x-model="editNom" placeholder="Nom" class="min-w-0 flex-1 max-w-[95px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                        <input type="text" x-model="editPrenom" placeholder="Prénom" class="min-w-0 flex-1 max-w-[95px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                    </div>
+                                </td>
+                                <td class="p-2 align-middle">
+                                    <span x-show="editingId !== agent.id" class="text-[11px] text-slate-600 truncate block" x-text="agent.matricule || '-'"></span>
+                                    <input x-show="editingId === agent.id" type="text" x-model="editMatricule" class="w-full max-w-[85px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                </td>
+                                <td class="p-2 align-middle">
+                                    <span x-show="editingId !== agent.id" class="text-[11px] text-slate-600 truncate block" x-text="agent.email || '-'"></span>
+                                    <input x-show="editingId === agent.id" type="email" x-model="editEmail" class="w-full max-w-[200px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                </td>
+                                <td class="p-2 align-middle">
+                                    <span x-show="editingId !== agent.id" class="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase truncate inline-block max-w-full" x-text="getSiteName(agent.siteId)"></span>
+                                    <select x-show="editingId === agent.id" x-model.number="editSiteId" class="w-full max-w-[115px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                        <template x-for="s in sites" :key="s.id">
+                                            <option :value="s.id" x-text="s.nom"></option>
+                                        </template>
+                                    </select>
+                                </td>
+                                <td class="p-2 align-middle">
+                                    <span x-show="editingId !== agent.id" class="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full text-[10px] font-bold truncate inline-block max-w-full" x-text="getManagerName(agent.managerId)"></span>
+                                    <select x-show="editingId === agent.id" x-model.number="editManagerId" class="w-full max-w-[140px] bg-white border border-indigo-200 rounded px-1.5 py-0.5 text-[11px] font-bold">
+                                        <option :value="null">Aucun</option>
+                                        <template x-for="m in managers" :key="m.id">
+                                            <option :value="m.id" x-text="m.nom"></option>
+                                        </template>
+                                    </select>
+                                </td>
+                                <td class="p-2 text-right align-middle whitespace-nowrap">
+                                    <div x-show="editingId !== agent.id" class="flex gap-1 justify-end">
+                                        <button @click="editingId = agent.id; editNom = agent.nom; editPrenom = agent.prénom; editMatricule = agent.matricule || ''; editEmail = agent.email || ''; editSiteId = agent.siteId; editManagerId = agent.managerId" class="text-indigo-400 hover:text-indigo-600 font-bold p-1.5 transition-colors text-sm">✎</button>
+                                        <button @click="deleteAgent(agent.id)" class="text-rose-400 hover:text-rose-600 font-bold p-1.5 transition-colors text-sm">🗑️</button>
+                                    </div>
+                                    <div x-show="editingId === agent.id" class="flex gap-1 justify-end">
+                                        <button @click="updateAgent(agent.id, editNom, editPrenom, editMatricule, editEmail, editSiteId, editManagerId); editingId = null" class="text-emerald-500 hover:text-emerald-700 font-bold p-1.5 text-sm">✓</button>
+                                        <button @click="editingId = null" class="text-slate-400 hover:text-slate-600 font-bold p-1.5 text-sm">✕</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

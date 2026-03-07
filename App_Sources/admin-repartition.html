@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Répartition Superviseurs | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="../config/agents.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        html { scrollbar-gutter: stable; }
+        .dragging { opacity: 0.5; }
+        .drop-zone { min-height: 100px; }
+        .agent-card { cursor: move; }
+        .conflict-badge { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="repartitionApp()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <div :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 flex flex-col h-[calc(100vh-68px)]">
+        <!-- En-tête commun : titre, retour, campagne, explications (repliable) -->
+        <header class="relative shrink-0 bg-slate-50 px-8 border-b border-slate-200">
+            <!-- Replié : une ligne avec stepper réduit (absolute quand déplié pour éviter double hauteur) -->
+            <div x-show="!headerExpanded"
+                 :class="{ 'absolute inset-x-0 top-0 z-0': headerExpanded }"
+                 x-transition:enter="transition ease-out duration-400"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-400"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="py-3 flex items-center gap-3 flex-wrap bg-slate-50 px-8">
+                <a href="#" @click.prevent="goBackToStep1()" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline shrink-0">← Retour à l'étape 1</a>
+                <span class="text-slate-300 shrink-0" aria-hidden="true">|</span>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1.5 opacity-50">
+                        <span class="w-5 h-5 rounded-full bg-slate-200 text-slate-500 font-black text-[10px] flex items-center justify-center">1</span>
+                        <span class="text-xs font-medium text-slate-500">Choix des agents</span>
+                    </div>
+                    <span class="text-slate-300 text-xs">—</span>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-5 h-5 rounded-full bg-amber-600 text-white font-black text-[10px] flex items-center justify-center">2</span>
+                        <span class="text-xs font-black text-slate-800">Répartition</span>
+                    </div>
+                </div>
+                <span class="text-slate-300 shrink-0" aria-hidden="true">·</span>
+                <span class="text-xs text-slate-600">Campagne : <span class="font-black" x-text="campaignName"></span></span>
+                <button type="button" @click="headerExpanded = true" class="ml-auto text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline shrink-0">Développer ▼</button>
+            </div>
+            <!-- Déplié : titre + explications (absolute quand replié pour éviter double hauteur) -->
+            <div x-show="headerExpanded"
+                 :class="{ 'absolute inset-x-0 top-0 z-0': !headerExpanded }"
+                 x-transition:enter="transition ease-out duration-400"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-400"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="py-6 grid grid-cols-1 md:grid-cols-[30%_1fr] gap-6 items-start bg-slate-50 px-8">
+                <div>
+                    <a href="#" @click.prevent="goBackToStep1()" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour à l'étape 1</a>
+                    <h1 class="text-3xl font-black text-indigo-900 mt-2 tracking-tight">Répartition des Superviseurs</h1>
+                    <p class="text-slate-500 font-medium text-sm mt-1">Campagne : <span class="font-black" x-text="campaignName"></span></p>
+                    <p class="text-slate-600 font-medium text-sm mt-1">Étape 2 sur 2 : répartissez les agents entre les superviseurs (3 sous-étapes ci-dessous).</p>
+                    <!-- Stepper : même style que admin-campagnes, étape 2 active -->
+                    <div class="flex items-center gap-4 mt-6">
+                        <div class="flex items-center gap-2 opacity-50">
+                            <span class="w-8 h-8 rounded-full bg-slate-200 text-slate-500 font-black text-sm flex items-center justify-center">1</span>
+                            <span class="text-sm font-medium text-slate-500">Choix des agents</span>
+                        </div>
+                        <span class="text-slate-300">—</span>
+                        <div class="flex items-center gap-2">
+                            <span class="w-8 h-8 rounded-full bg-amber-600 text-white font-black text-sm flex items-center justify-center">2</span>
+                            <span class="text-sm font-black text-slate-800">Répartition</span>
+                        </div>
+                    </div>
+                </div>
+            <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-xs font-black text-indigo-900 uppercase tracking-wider mb-2 flex items-center gap-1.5"><span class="text-base" aria-hidden="true">📋</span> En 3 sous-étapes</p>
+                    <ol class="text-sm text-slate-600 space-y-1">
+                        <li><strong>1. Superviseurs</strong> — À gauche : cochez les participants et réglez leur poids (%).</li>
+                        <li><strong>2. Affectations forcées (optionnel)</strong> — Assignez manuellement certains agents depuis le pool ; ils resteront fixes.</li>
+                        <li><strong>3. Répartition automatique</strong> — Répartissez le reste des agents selon les quotas, puis enregistrez.</li>
+                    </ol>
+                </div>
+                <div class="text-sm text-slate-600 border-l border-indigo-200 pl-4 sm:pl-4">
+                    <p class="text-xs font-black text-indigo-900 uppercase tracking-wider mb-1 flex items-center gap-1.5"><span class="text-base" aria-hidden="true">💡</span> Astuce</p>
+                    <p>Un superviseur coché avec un poids à <strong>0&nbsp;%</strong> ne reçoit aucun agent lors de la répartition automatique. Vous pouvez lui assigner des agents manuellement à l’étape 2 ; ils resteront les seuls qui lui sont affectés.</p>
+                </div>
+            </div>
+                <div class="flex justify-center pt-2 col-span-full">
+                    <button type="button" @click="headerExpanded = false" class="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded hover:bg-slate-100" title="Replier" aria-label="Replier la section">
+                        <span class="text-lg leading-none block">▲</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex flex-1 min-h-0 overflow-y-auto p-4 gap-4 items-start" @scroll="onContentScroll($event)">
+        <!-- Sidebar : Sélection des superviseurs (masquée en mode Manager) ou Managers concernés -->
+        <aside class="w-80 bg-white rounded-2xl shadow-xl border border-slate-100 p-6 shrink-0 h-fit" x-show="!assignToManager">
+            <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                <span class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm shrink-0">1</span>
+                Sélection des superviseurs
+            </h2>
+            <p class="text-sm text-slate-500 mt-2 mb-4">Choisissez les participants et leur poids (%).</p>
+            <div class="flex items-center justify-between mb-3 text-xs">
+                <span class="text-slate-500" x-text="`${selectedSupervisors.length} sélectionné(s)`"></span>
+                <span class="font-bold text-purple-600" x-text="`Capacité: ${totalWeight}%`"></span>
+            </div>
+            <div class="space-y-2">
+                <template x-for="sup in supervisors" :key="sup.id">
+                    <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border-2 transition-all cursor-pointer"
+                           :class="selectedSupervisors.includes(sup.id) ? 'border-purple-500 bg-purple-50' : 'border-slate-100 hover:border-purple-300'">
+                        <input type="checkbox" :value="sup.id" x-model="selectedSupervisors"
+                               @change="updateSupervisorSelection()"
+                               class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 shrink-0">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-bold text-sm truncate" x-text="sup.nom"></div>
+                            <div class="text-xs text-slate-400 mt-0.5" x-show="selectedSupervisors.includes(sup.id)">
+                                <input type="number"
+                                       :value="supervisorWeights[sup.id] ?? sup.default_weight"
+                                       @input="supervisorWeights[sup.id] = parseInt($event.target.value)"
+                                       @click.stop
+                                       class="w-14 bg-white border border-purple-200 rounded px-1.5 py-0.5 text-center font-bold"
+                                       min="1" max="200"> %
+                            </div>
+                        </div>
+                    </label>
+                </template>
+            </div>
+        </aside>
+        <aside x-show="assignToManager" class="w-80 bg-white rounded-2xl shadow-xl border border-slate-100 p-6 shrink-0 h-fit">
+            <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                <span class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm shrink-0">1</span>
+                Managers concernés
+            </h2>
+            <p class="text-sm text-slate-500 mt-2 mb-4">Déduits des agents sélectionnés. Glissez-déposez pour réaffecter si besoin.</p>
+            <div class="space-y-2">
+                <template x-for="supId in selectedSupervisors" :key="supId">
+                    <div class="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border-2 border-indigo-200">
+                        <div class="w-8 h-8 bg-indigo-500 text-white rounded-lg flex items-center justify-center text-sm font-black shrink-0" x-text="(getManagerName(supId) || '').charAt(0)"></div>
+                        <div class="flex-1 min-w-0 font-bold text-sm truncate" x-text="getManagerName(supId)"></div>
+                        <span class="text-xs font-black text-indigo-600" x-text="(assignments[supId] || []).length"></span>
+                    </div>
+                </template>
+            </div>
+        </aside>
+
+        <!-- Zone principale : étapes 2 et 3 -->
+        <main class="flex-1 min-w-0 pt-0 px-8 pb-8 bg-slate-50 min-h-0">
+            <!-- Étape 2: Affectations forcées (optionnel) -->
+        <section class="mb-8">
+            <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                <div class="mb-6">
+                    <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-8 h-8 bg-amber-500 text-white rounded-lg flex items-center justify-center text-sm">2</span>
+                        Affectations forcées <span class="text-slate-400 font-normal normal-case text-sm">(optionnel)</span>
+                    </h2>
+                    <p class="text-sm text-slate-500 mt-2">Assignez manuellement certains agents à un superviseur avec « Assigner à ». Ces agents ne bougeront pas lors de la répartition automatique. Sinon, passez directement à l’étape 3.</p>
+                </div>
+
+                <!-- Pool -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">Pool non assigné</h3>
+                    <span class="text-xl font-black text-amber-600" x-text="poolAgents.length"></span>
+                </div>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+                <label class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Site</span>
+                    <select x-model="poolFilterSite" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-medium">
+                        <option value="">Tous</option>
+                        <template x-for="s in sites" :key="s.id">
+                            <option :value="s.id" x-text="s.nom"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Manager</span>
+                    <select x-model="poolFilterSupervisor" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-medium">
+                        <option value="">Tous</option>
+                        <template x-for="m in managers" :key="m.id">
+                            <option :value="m.id" x-text="m.nom"></option>
+                        </template>
+                    </select>
+                </label>
+                <label class="flex items-center gap-2">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase">Recherche</span>
+                    <input type="text" x-model="poolFilterSearch" placeholder="Nom, prénom…" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-40 font-medium placeholder:text-slate-400">
+                </label>
+                <span x-show="poolFilterSite || poolFilterSearch || poolFilterSupervisor" class="text-[10px] text-slate-400" x-text="'Affichés: ' + filteredPoolAgents.length + ' / ' + poolAgents.length"></span>
+            </div>
+            <div class="overflow-x-auto overflow-y-hidden pb-2 -mx-1 max-w-full">
+                <div id="pool-zone" class="drop-zone grid grid-rows-2 grid-flow-col grid-auto-cols-[160px] gap-2 w-max min-h-[120px]">
+                    <div class="sortable-placeholder" style="display: none;"></div>
+                    <template x-for="agent in filteredPoolAgents" :key="agent.id">
+                        <div :data-agent="agent.id" class="agent-card bg-slate-50 p-2 rounded-xl border-2 border-slate-200 hover:border-amber-400 transition-all flex items-start gap-2 h-fit">
+                            <div class="flex-1 min-w-0">
+                                <div class="font-bold text-xs" x-text="getAgentDisplayName(agent)"></div>
+                                <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span class="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full" x-text="getSiteName(agent.siteId)"></span>
+                                    <span x-show="agent.managerId" class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full" x-text="'👔 ' + getManagerName(agent.managerId)"></span>
+                                    <select class="text-[10px] font-bold border border-purple-200 rounded-lg px-2 py-1 bg-white cursor-pointer focus:ring-2 focus:ring-purple-400"
+                                            @change="assignAgentToSupervisor(agent.id, Number($event.target.value)); $event.target.value = ''"
+                                            title="Assigner à un superviseur sans glisser">
+                                        <option value="" selected>→ Assigner à</option>
+                                        <template x-for="supId in selectedSupervisors" :key="supId">
+                                            <option :value="supId" x-text="assignToManager ? getManagerName(supId) : ((supervisors.find(s => parseInt(s.id) === parseInt(supId)) || {}).nom || '?')"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            </div>
+
+                <!-- Étape 3: Répartition automatique et enregistrement -->
+                <div class="pt-4 mt-4 border-t border-slate-200">
+                    <div class="mb-4">
+                    <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center text-sm">3</span>
+                        Répartition automatique et enregistrement
+                    </h2>
+                    <p class="text-sm text-slate-500 mt-2">Les agents encore dans le pool seront répartis entre les superviseurs selon les quotas (poids). Vous pouvez réinitialiser et relancer, puis enregistrer la campagne.</p>
+                </div>
+                <div class="flex flex-wrap gap-4 items-center">
+                    <button @click="calculateAutoAssignments()" 
+                            x-show="!assignToManager"
+                            :disabled="selectedSupervisors.length === 0 || poolAgents.length === 0"
+                            class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                        ⚡ Répartition automatique
+                    </button>
+                    <button @click="resetAssignments()" 
+                            class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-6 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
+                        🔄 Réinitialiser
+                    </button>
+                    <button @click="saveAndFinalize()" 
+                            :disabled="campaignAgents.length === 0"
+                            class="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                        ✅ Enregistrer la campagne
+                    </button>
+                    <p x-show="poolAgents.length > 0 && campaignAgents.length > 0" class="text-xs text-amber-600 font-bold">
+                        <span x-text="poolAgents.length"></span> agent(s) non assigné(s). Vous pouvez enregistrer quand même.
+                    </p>
+                </div>
+                </div>
+
+                <!-- Blocs Superviseurs (pleine largeur, repliables) -->
+                <div class="mt-6 space-y-4">
+                <template x-for="supId in selectedSupervisors" :key="supId">
+                    <div x-data="{ 
+                            open: true,
+                            get sup() { 
+                                return assignToManager ? null : supervisors.find(s => parseInt(s.id) === parseInt(supId)); 
+                            },
+                            get evaluatorName() {
+                                return assignToManager ? getManagerName(supId) : (sup?.nom || 'Inconnu');
+                            }
+                         }"
+                         class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden w-full"
+                         :class="!open && 'self-start'">
+                        <button type="button" @click="open = !open" class="w-full p-4 border-b text-left transition-colors flex items-center gap-3 min-w-0"
+                                :class="assignToManager ? 'bg-indigo-50 border-indigo-100 hover:bg-indigo-100/80' : 'bg-purple-50 border-purple-100 hover:bg-purple-100/80'">
+                            <span class="text-slate-500 transition-transform shrink-0" :class="open ? '' : '-rotate-90'" aria-hidden="true">▼</span>
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 text-white"
+                                 :class="assignToManager ? 'bg-indigo-500' : 'bg-purple-500'" x-text="(evaluatorName || '?').charAt(0)"></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-black text-base truncate" x-text="evaluatorName"></div>
+                                <div x-show="!assignToManager" class="text-xs text-purple-600 font-bold" x-text="`Poids: ${supervisorWeights[supId] ?? sup?.default_weight ?? 100}%`"></div>
+                            </div>
+                            <div class="text-sm text-slate-600 shrink-0 whitespace-nowrap">
+                                <span class="font-black" :class="assignToManager ? 'text-indigo-700' : 'text-purple-700'" x-text="`${assignments[supId]?.length || 0} / ${getQuota(supId)} agents`"></span>
+                            </div>
+                        </button>
+                        <div x-show="open" x-transition class="origin-top">
+                            <div :id="'supervisor-' + supId" class="p-4 drop-zone min-h-[120px]">
+                                <div class="sortable-placeholder" style="display: none;"></div>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+                                    <template x-for="agentId in (assignments[supId] || [])" :key="agentId">
+                                        <div :data-agent="agentId" 
+                                             x-data="{ agent: getAgentById(agentId) }"
+                                             class="agent-card bg-purple-50 p-2 rounded-lg border-2 transition-all flex flex-col gap-1"
+                                             :class="agent && agent.managerId === supId && !assignToManager ? 'border-rose-300 conflict-badge' : (assignToManager ? 'border-indigo-200 hover:border-indigo-400' : 'border-purple-200 hover:border-purple-400')">
+                                            <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                                <span class="font-bold text-[11px] truncate" x-text="agent ? getAgentDisplayName(agent) : ''"></span>
+                                                <span x-show="agent" class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded shrink-0" x-text="getSiteName(agent.siteId)"></span>
+                                                <span x-show="agent && agent.managerId" class="text-[9px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded shrink-0" x-text="'👔 ' + getManagerName(agent.managerId)"></span>
+                                                <span x-show="forcedAssignments[supId]?.includes(agentId)" class="text-[8px] text-indigo-600 font-bold shrink-0">🔒</span>
+                                                <span x-show="agent && agent.managerId === supId && !assignToManager" class="text-rose-500 shrink-0" title="Conflit">⚠️</span>
+                                            </div>
+                                            <div class="flex justify-start">
+                                                <select class="text-[10px] font-bold border border-purple-200 rounded px-1.5 py-0.5 bg-white cursor-pointer focus:ring-1 focus:ring-purple-400"
+                                                        @change="reassignAgent(agentId, supId, $event.target.value); $event.target.value = ''"
+                                                        title="Changer l'assignation">
+                                                    <option value="" selected>→ Changer</option>
+                                                    <option value="pool">Pool</option>
+                                                    <template x-for="sId in selectedSupervisors" :key="sId">
+                                                        <option :value="sId" x-text="assignToManager ? getManagerName(sId) : ((supervisors.find(s => parseInt(s.id) === parseInt(sId)) || {}).nom || '?')"></option>
+                                                    </template>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="selectedSupervisors.length === 0" class="text-center py-16 text-slate-400 rounded-2xl border border-slate-200 bg-slate-50/50">
+                    <p class="text-lg font-bold">Aucun superviseur sélectionné</p>
+                    <p class="text-sm">Cochez au moins un superviseur à l’étape 1</p>
+                </div>
+                </div>
+            </div>
+        </section>
+        </main>
+        </div>
+    </div>
+
+    <script>
+        function repartitionApp() {
+            const baseApp = app();
+            const baseInit = baseApp.init;
+            
+            return {
+                ...baseApp,
+                
+                // Données spécifiques répartition
+                campaignName: '',
+                targetEvals: 3,
+                campaignAgents: [],
+                assignToManager: false,
+                selectedSupervisors: [],
+                supervisorWeights: {},
+                assignments: {},
+                forcedAssignments: {},
+                poolAgents: [],
+                sortableInstances: [],
+                poolFilterSite: '',
+                poolFilterSearch: '',
+                poolFilterSupervisor: '',
+                headerExpanded: true,
+                
+                onContentScroll(evt) {
+                    const el = evt.target;
+                    if (el.scrollTop > 60 && this.headerExpanded) {
+                        this.headerExpanded = false;
+                        el.scrollTo({ top: 0, behavior: 'smooth' });
+                        const scrollEl = el;
+                        setTimeout(() => {
+                            if (scrollEl.scrollTop < 80) scrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+                        }, 420);
+                    }
+                },
+                
+                get filteredPoolAgents() {
+                    let list = this.poolAgents;
+                    if (this.poolFilterSite !== '' && this.poolFilterSite != null) {
+                        const siteId = parseInt(this.poolFilterSite);
+                        list = list.filter(a => parseInt(a.siteId) === siteId);
+                    }
+                    if (this.poolFilterSupervisor !== '' && this.poolFilterSupervisor != null) {
+                        const mgrId = parseInt(this.poolFilterSupervisor);
+                        list = list.filter(a => (a.managerId != null && parseInt(a.managerId) === mgrId));
+                    }
+                    if (this.poolFilterSearch && this.poolFilterSearch.trim() !== '') {
+                        const q = this.poolFilterSearch.trim().toLowerCase();
+                        list = list.filter(a => this.getAgentDisplayName(a).toLowerCase().includes(q));
+                    }
+                    return list;
+                },
+                
+                get totalWeight() {
+                    if (this.assignToManager) return this.selectedSupervisors.length * 100;
+                    return this.selectedSupervisors.reduce((sum, id) => {
+                        const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(id));
+                        const weight = this.supervisorWeights[id] ?? sup?.default_weight ?? 100;
+                        return sum + weight;
+                    }, 0);
+                },
+                
+                async init() {
+                    // Appeler l'init de base
+                    await baseInit.call(this);
+                    
+                    // Récupérer les paramètres de sessionStorage
+                    const storedData = sessionStorage.getItem('campaignData');
+                    if (storedData) {
+                        const data = JSON.parse(storedData);
+                        this.campaignName = data.name;
+                        this.targetEvals = data.targetEvals;
+                        this.campaignAgents = (data.agents || []).map(id => Number(id));
+                        this.assignToManager = data.assignToManager === true;
+                        
+                        // Charger les objets agents complets (campaignAgents = IDs)
+                        this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
+                        
+                        // Charger config existante si édition (format: { supId: { agent_ids, forced_ids, weight } })
+                        if (data.isEditing && data.existingAssignments) {
+                            this.selectedSupervisors = (data.participatingSupervisors || []).map(id => parseInt(id));
+                            if (this.assignToManager && this.selectedSupervisors.length === 0)
+                                this.selectedSupervisors = [...new Set(Object.keys(data.existingAssignments).map(k => parseInt(k)))];
+                            this.assignments = {};
+                            this.forcedAssignments = {};
+                            Object.entries(data.existingAssignments).forEach(([supId, block]) => {
+                                const id = parseInt(supId);
+                                const agentIds = block && block.agent_ids ? block.agent_ids : [];
+                                this.assignments[id] = agentIds.map(x => parseInt(x));
+                                this.forcedAssignments[id] = Array.isArray(block?.forced_ids) ? block.forced_ids.map(x => parseInt(x)) : [];
+                                if (block && typeof block.weight === 'number') this.supervisorWeights[id] = block.weight;
+                            });
+                            this.updatePoolFromAssignments();
+                        } else if (this.assignToManager) {
+                            // Mode Manager : colonnes = managers uniques des agents sélectionnés, pré-remplissage par managerId
+                            const managerIds = [...new Set(this.poolAgents.map(a => a.managerId).filter(id => id != null && id !== ''))];
+                            this.selectedSupervisors = managerIds.map(id => parseInt(id));
+                            this.selectedSupervisors.forEach(id => {
+                                this.assignments[id] = [];
+                                this.forcedAssignments[id] = [];
+                            });
+                            this.poolAgents.forEach(agent => {
+                                const mid = agent.managerId != null ? parseInt(agent.managerId) : null;
+                                if (mid != null && this.assignments[mid]) {
+                                    this.assignments[mid].push(agent.id);
+                                }
+                            });
+                            this.poolAgents = this.poolAgents.filter(a => a.managerId == null || a.managerId === '');
+                        }
+                    } else {
+                        this.notify("Erreur: Données de campagne manquantes", "error");
+                    }
+                    
+                    // Initialiser le drag & drop après un délai
+                    this.$nextTick(() => {
+                        setTimeout(() => this.initDragDrop(), 200);
+                    });
+                },
+                
+                updateSupervisorSelection() {
+                    // Normaliser en nombres (les checkboxes fournissent des strings)
+                    this.selectedSupervisors = this.selectedSupervisors.map(id => Number(id));
+                    this.$nextTick(() => {
+                        setTimeout(() => this.initDragDrop(), 100);
+                    });
+                },
+                
+                initDragDrop() {
+                    // Drag & drop désactivé : assignation uniquement par select
+                    this.sortableInstances.forEach(s => {
+                        try { s.destroy(); } catch(e) {}
+                    });
+                    this.sortableInstances = [];
+                },
+                
+                handleDrop(evt, targetSupId = null) {
+                    const agentIdRaw = evt.item.getAttribute('data-agent');
+                    if (agentIdRaw == null || agentIdRaw === '') return;
+                    const agentId = parseInt(agentIdRaw);
+
+                    const fromId = evt.from.id;
+                    const toId = evt.to.id;
+
+                    if (fromId === toId && evt.newIndex === evt.oldIndex) return;
+
+                    const isFromPool = fromId === 'pool-zone';
+                    const isToPool = toId === 'pool-zone';
+                    const fromSupId = isFromPool ? null : parseInt(fromId.replace('supervisor-', ''));
+                    const toSupId = isToPool ? null : parseInt(toId.replace('supervisor-', ''));
+
+                    if (isFromPool) {
+                        const agentIndex = this.poolAgents.findIndex(a => a.id === agentId);
+                        if (agentIndex > -1) this.poolAgents.splice(agentIndex, 1);
+                    } else {
+                        if (this.assignments[fromSupId]) {
+                            this.assignments[fromSupId] = this.assignments[fromSupId].filter(id => id !== agentId);
+                            if (this.forcedAssignments[fromSupId]) {
+                                this.forcedAssignments[fromSupId] = this.forcedAssignments[fromSupId].filter(id => id !== agentId);
+                            }
+                        }
+                    }
+
+                    if (isToPool) {
+                        const agent = this.getAgentById(agentId);
+                        if (agent && !this.poolAgents.some(a => a.id === agentId)) {
+                            this.poolAgents.push(agent);
+                        }
+                    } else {
+                        if (!this.assignments[toSupId]) this.assignments[toSupId] = [];
+                        if (!this.assignments[toSupId].includes(agentId)) {
+                            this.assignments[toSupId].push(agentId);
+                        }
+                        if (!this.forcedAssignments[toSupId]) this.forcedAssignments[toSupId] = [];
+                        if (!this.forcedAssignments[toSupId].includes(agentId)) {
+                            this.forcedAssignments[toSupId].push(agentId);
+                        }
+                    }
+
+                    evt.item.remove();
+                    this.$nextTick(() => this.initDragDrop());
+                },
+                
+                assignAgentToSupervisor(agentId, supId) {
+                    if (!supId || !this.selectedSupervisors.includes(supId)) return;
+                    const idx = this.poolAgents.findIndex(a => a.id === agentId);
+                    if (idx === -1) return;
+                    this.poolAgents.splice(idx, 1);
+                    if (!this.assignments[supId]) this.assignments[supId] = [];
+                    if (!this.assignments[supId].includes(agentId)) this.assignments[supId].push(agentId);
+                    if (!this.forcedAssignments[supId]) this.forcedAssignments[supId] = [];
+                    if (!this.forcedAssignments[supId].includes(agentId)) this.forcedAssignments[supId].push(agentId);
+                },
+                
+                moveAgentToPool(agentId, supId) {
+                    const id = parseInt(agentId);
+                    const sup = parseInt(supId);
+                    if (!this.assignments[sup]) return;
+                    this.assignments[sup] = this.assignments[sup].filter(a => a !== id);
+                    if (this.forcedAssignments[sup]) this.forcedAssignments[sup] = this.forcedAssignments[sup].filter(a => a !== id);
+                    const agent = this.getAgentById(id);
+                    if (agent && !this.poolAgents.some(a => a.id === id)) this.poolAgents.push(agent);
+                },
+                
+                reassignAgent(agentId, fromSupId, toSupIdOrPool) {
+                    const id = parseInt(agentId);
+                    const from = parseInt(fromSupId);
+                    if (!toSupIdOrPool || toSupIdOrPool === 'pool') {
+                        this.moveAgentToPool(id, from);
+                        return;
+                    }
+                    const to = parseInt(toSupIdOrPool);
+                    if (to === from) return;
+                    if (!this.assignments[from]) return;
+                    this.assignments[from] = this.assignments[from].filter(a => a !== id);
+                    if (this.forcedAssignments[from]) this.forcedAssignments[from] = this.forcedAssignments[from].filter(a => a !== id);
+                    if (!this.assignments[to]) this.assignments[to] = [];
+                    if (!this.assignments[to].includes(id)) this.assignments[to].push(id);
+                    if (!this.forcedAssignments[to]) this.forcedAssignments[to] = [];
+                    if (!this.forcedAssignments[to].includes(id)) this.forcedAssignments[to].push(id);
+                },
+                
+                updatePoolFromAssignments() {
+                    const assignedIds = Object.values(this.assignments).flat();
+                    this.poolAgents = this.allAgents.filter(a => 
+                        this.campaignAgents.includes(a.id) && !assignedIds.includes(a.id)
+                    );
+                },
+                
+                getQuota(supId) {
+                    if (this.assignToManager) return (this.assignments[supId] || []).length;
+                    if (this.campaignAgents.length === 0) return 0;
+                    const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(supId));
+                    const weight = this.supervisorWeights[supId] ?? sup?.default_weight ?? 100;
+                    if (this.totalWeight === 0) return 0;
+                    return Math.round((weight / this.totalWeight) * this.campaignAgents.length);
+                },
+                
+                calculateAutoAssignments() {
+                    if (this.assignToManager) return;
+                    if (this.selectedSupervisors.length === 0) {
+                        return this.notify("Sélectionnez au moins un superviseur", "error");
+                    }
+                    
+                    // Répartition du pool en tenant compte des assignations déjà en place
+                    const result = this.calculateAssignments(
+                        this.selectedSupervisors.map(id => {
+                            const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(id));
+                            return {
+                                id: parseInt(id),
+                                nom: sup ? sup.nom : 'Inconnu',
+                                weight: this.supervisorWeights[id] ?? sup?.default_weight ?? 100
+                            };
+                        }),
+                        this.poolAgents,
+                        this.forcedAssignments,
+                        this.assignments
+                    );
+                    
+                    Object.entries(result.assignments).forEach(([supId, agentIds]) => {
+                        const id = parseInt(supId);
+                        if (!this.assignments[id]) this.assignments[id] = [];
+                        agentIds.forEach(aid => {
+                            if (!this.assignments[id].includes(aid)) {
+                                this.assignments[id].push(aid);
+                            }
+                        });
+                    });
+                    
+                    // Vider le pool
+                    this.poolAgents = [];
+                    
+                    // Afficher les conflits
+                    if (result.conflicts.length > 0) {
+                        const msg = `${result.conflicts.length} conflit(s) détecté(s) (agents assignés à leur manager)`;
+                        this.notify(msg, "error");
+                    } else {
+                        this.notify("Répartition effectuée avec succès !");
+                    }
+                },
+                
+                resetAssignments() {
+                    if (!confirm("Réinitialiser toutes les assignations ?")) return;
+                    this.assignments = {};
+                    this.forcedAssignments = {};
+                    this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
+                    this.notify("Assignations réinitialisées");
+                },
+                
+                async _persistAssignments() {
+                    const sanitizedName = repository.sanitizeDirectoryName(this.campaignName);
+                    const campaignHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedName, { create: true });
+                    let existingConfig = {};
+                    try {
+                        const existingHandle = await campaignHandle.getFileHandle('campaign_config.json');
+                        const existingFile = await existingHandle.getFile();
+                        existingConfig = JSON.parse(await existingFile.text()) || {};
+                    } catch (e) { /* pas de fichier */ }
+                    const assignmentsData = {};
+                    this.selectedSupervisors.forEach(supId => {
+                        const id = parseInt(supId);
+                        const sup = this.supervisors.find(s => parseInt(s.id) === id);
+                        assignmentsData[supId] = {
+                            weight: this.supervisorWeights[id] ?? sup?.default_weight ?? 100,
+                            agent_ids: this.assignments[id] || [],
+                            forced_ids: this.forcedAssignments[id] || []
+                        };
+                    });
+                    const config = {
+                        ...existingConfig,
+                        agent_ids: this.campaignAgents,
+                        target_evals: this.targetEvals,
+                        date: new Date().toISOString(),
+                        assign_to_manager: !!this.assignToManager,
+                        participating_supervisors: this.selectedSupervisors,
+                        assignments: assignmentsData
+                    };
+                    const fileHandle = await campaignHandle.getFileHandle('campaign_config.json', { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(JSON.stringify(config, null, 2));
+                    await writable.close();
+                    const stored = sessionStorage.getItem('campaignData');
+                    if (stored) {
+                        const data = JSON.parse(stored);
+                        data.existingAssignments = assignmentsData;
+                        data.participatingSupervisors = this.selectedSupervisors;
+                        data.assignToManager = !!this.assignToManager;
+                        sessionStorage.setItem('campaignData', JSON.stringify(data));
+                    }
+                },
+
+                async saveAndFinalize() {
+                    if (this.campaignAgents.length === 0) {
+                        return this.notify("Aucun agent dans la campagne", "error");
+                    }
+                    if (this.poolAgents.length > 0 && !confirm(`${this.poolAgents.length} agent(s) non assigné(s). Enregistrer quand même ? Vous pourrez terminer la répartition en modifiant la campagne.`)) {
+                        return;
+                    }
+                    try {
+                        await this._persistAssignments();
+                        this.notify("Campagne enregistrée.");
+                    } catch (e) {
+                        console.error(e);
+                        this.notify("Erreur lors de la finalisation", "error");
+                    }
+                },
+
+                async goBackToStep1(evt) {
+                    if (evt) evt.preventDefault();
+                    if (this.campaignAgents.length === 0) {
+                        window.location.href = 'admin-campagnes.html?campagne=' + encodeURIComponent(this.campaignName);
+                        return;
+                    }
+                    if (!this.campagnesHandle) {
+                        this.notify("Accès au dossier campagnes requis pour enregistrer.", "error");
+                        return;
+                    }
+                    try {
+                        await this._persistAssignments();
+                        this.notify("Campagne enregistrée. Retour à l'étape 1.");
+                        window.location.href = 'admin-campagnes.html?campagne=' + encodeURIComponent(this.campaignName);
+                    } catch (e) {
+                        console.error(e);
+                        this.notify("Erreur lors de l'enregistrement.", "error");
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
