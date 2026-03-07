@@ -7,6 +7,10 @@ echo [setup] Demarrage - initialisation des dossiers de configuration...
 mkdir "App_Sources\config\grilles" 2>nul
 echo [setup] Dossiers App_Sources\config et grilles verifies ou crees.
 
+if not exist "Campagnes" mkdir "Campagnes"
+if not exist "Data_Stats" mkdir "Data_Stats"
+echo [setup] Dossiers racine Campagnes et Data_Stats verifies ou crees.
+
 echo [setup] Copie des fichiers d'exemple vers config (sans ecrasement)...
 for %%I in (App_Sources\examples\*.example.js) do (
   set "nom=%%~nI"
