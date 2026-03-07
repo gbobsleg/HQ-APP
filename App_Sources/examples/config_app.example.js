@@ -2,8 +2,8 @@
 // Copier en config_app.js et renseigner les valeurs sensibles (clé Mistral, token, etc.)
 const CONFIG_APP = {
     "updateSource": {
-        "repoOwner": "demo-organisation",
-        "repoName": "hq-app-demo",
+        "repoOwner": "gbobsleg",
+        "repoName": "HQ-APP",
         "token": ""
     },
     "duration_thresholds": {
