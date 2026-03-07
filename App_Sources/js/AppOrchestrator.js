@@ -1097,7 +1097,7 @@ function app() {
                                         window.refreshProdFromStore(self.rootHandle, self.allAgents, self.managers);
                                     }
                                     if (s.activeTab === 'agent360' && self.rootHandle && self.campagnesHandle && window.refresh360FromStore) {
-                                        window.refresh360FromStore(self.rootHandle, self.campagnesHandle, self.allAgents);
+                                        window.refresh360FromStore(s.selectedAgent360, self.rootHandle, self.campagnesHandle, self.allAgents);
                                     }
                                     self.updateDashboardUrl();
                                 };

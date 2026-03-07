@@ -187,10 +187,10 @@
             if (!s) return;
             refreshProductionDashboard(rootHandle, s.prodPerimeter, s.prodSelectedManager, allAgents, managers, s.selectedDateFrom || null, s.selectedDateTo || null);
         }
-        function refresh360FromStore(rootHandle, campagnesHandle, allAgents) {
+        function refresh360FromStore(directAgentId, rootHandle, campagnesHandle, allAgents) {
             var s = window.Alpine && window.Alpine.store('dashboard');
             if (!s) return;
-            var agentId = parseInt(s.selectedAgent360);
+            var agentId = parseInt(directAgentId);
             if (isNaN(agentId)) return;
             var agent = allAgents && allAgents.find(function(a) { return +a.id === agentId; });
             var name = agent && typeof getAgentDisplayName === 'function' ? getAgentDisplayName(agent) : '';
@@ -356,7 +356,7 @@
                 <div class="w-full">
                     <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Agent</label>
                     <select x-model="$store.dashboard.selectedAgent360"
-                        @change="refresh360FromStore(rootHandle, campagnesHandle, allAgents); updateDashboardUrl()"
+                        @change="refresh360FromStore($event.target.value, rootHandle, campagnesHandle, allAgents); updateDashboardUrl()"
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                         <option value="">— Choisir un agent —</option>
                         <template x-for="a in (allAgents || [])" :key="a.id">
