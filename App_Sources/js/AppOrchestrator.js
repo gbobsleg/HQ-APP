@@ -2301,7 +2301,6 @@ Les blocs ci-dessous sont des Ã©valuations distinctes. Chaque bloc contient un Â
                         }
                         return copy;
                     });
-                    if (rest.items) rest.items = rest.fields;
                     return rest;
                 });
                 const payload = { version: 2, title: (this.gridTitle || this.currentGridId), sections: cleanGrid };

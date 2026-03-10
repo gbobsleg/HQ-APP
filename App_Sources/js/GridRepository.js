@@ -67,6 +67,18 @@
             return out;
         }
 
+        _sanitizeForStorage(payload) {
+            if (!payload) return payload;
+            const clone = JSON.parse(JSON.stringify(payload));
+            if (Array.isArray(clone.sections)) {
+                clone.sections.forEach(section => {
+                    delete section.items;
+                    delete section.cat;
+                });
+            }
+            return clone;
+        }
+
         validateGrilleId(grilleId) {
             if (typeof grilleId !== 'string' || !this.GRILLE_ID_REGEX.test(grilleId) || grilleId.length > this.MAX_GRILLE_ID_LENGTH) {
                 throw new Error('grille_id invalide (caractères ou longueur non autorisés).');
@@ -198,8 +210,7 @@
 
         async saveGrid(rootHandle, grilleId, payload) {
             this.validateGrilleId(grilleId);
-            const normalized = this._normalizeGridPayload(payload);
-            const content = JSON.stringify(normalized, null, 2);
+            const content = JSON.stringify(this._sanitizeForStorage(this._normalizeGridPayload(payload)), null, 2);
 
             try {
                 const configDir = await this._getAppSourcesConfigDir(rootHandle);
@@ -243,7 +254,7 @@
         }
 
         async saveSnapshotForCampaign(rootHandle, campaignDirHandle, payload) {
-            const content = JSON.stringify(this._normalizeGridPayload(payload), null, 2);
+            const content = JSON.stringify(this._sanitizeForStorage(this._normalizeGridPayload(payload)), null, 2);
 
             try {
                 const fileHandle = await campaignDirHandle.getFileHandle(this.SNAPSHOT_FILENAME);
