@@ -1830,7 +1830,7 @@ Consignes de rédaction :
 Données sources :
 {{evaluationsBlock}}
 
-{{finalInstruction}}`;
+Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des évaluations ci-dessus.`;
         },
 
         initBilanPromptEdit() {
@@ -1998,7 +1998,6 @@ Données sources :
                 ? (this.appConfig.prompts && this.appConfig.prompts.review && this.appConfig.prompts.review.bilanSynthesis)
                 : (this.appConfig.prompts && this.appConfig.prompts.scoring && this.appConfig.prompts.scoring.bilanSynthesis);
             const template = (templateSource != null && String(templateSource).trim() !== '') ? templateSource : (isReview ? this.getDefaultReviewBilanSynthesisTemplate() : this.getDefaultBilanPromptTemplate());
-            const finalInstruction = "Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des évaluations ci-dessus.";
             if (isReview && evals.length > 0) {
                 const reviewLines = [];
                 evals.forEach((e) => {
@@ -2024,15 +2023,13 @@ Données sources :
                     .replace(/\{\{campaignName\}\}/g, campaignName)
                     .replace(/\{\{evalsCount\}\}/g, String(evals.length))
                     .replace(/\{\{evaluationsBlock\}\}/g, evaluationsBlock)
-                    .replace(/\{\{finalInstruction\}\}/g, finalInstruction)
                     .replace(/\{\{criteriaBlock\}\}/g, criteriaBlock)
                     .replace(/\{\{date\}\}/g, reviewDate);
             }
             return template
                 .replace(/\{\{campaignName\}\}/g, campaignName)
                 .replace(/\{\{evalsCount\}\}/g, String(evals.length))
-                .replace(/\{\{evaluationsBlock\}\}/g, evaluationsBlock)
-                .replace(/\{\{finalInstruction\}\}/g, finalInstruction);
+                .replace(/\{\{evaluationsBlock\}\}/g, evaluationsBlock);
         },
 
         async copyBilanPromptToClipboard() {
