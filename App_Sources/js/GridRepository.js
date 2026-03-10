@@ -106,102 +106,19 @@
         }
 
         /**
-         * Migration post-MAJ : si config/grilles/ n'existe pas mais config_grille.js oui,
-         * copie CONFIG_GRILLE vers config/grilles/default.json.
-         * @returns {Promise<boolean>} true si migration effectuée
+         * Crée default.json uniquement s'il n'existe pas (garde anti-écrasement).
+         * Si le fichier existe déjà, retourne sans écrire.
          */
-        async _migrateFromConfigGrilleJs(rootHandle) {
-            let categories = null;
-            try {
-                const configDir = await this._getAppSourcesConfigDir(rootHandle);
-                const fileHandle = await configDir.getFileHandle('config_grille.js');
-                const file = await fileHandle.getFile();
-                let text = (await file.text()).trim().replace(/^\uFEFF/, '');
-
-                // Stratégie 1 : Nettoyage préemptif du fichier JS pour exécution dynamique
-                // Suppression des instructions d'exportation qui bloquent 'new Function'
-                const sanitizedText = text
-                    .replace(/export\s+const\s+/g, 'const ')
-                    .replace(/export\s+let\s+/g, 'let ')
-                    .replace(/export\s+var\s+/g, 'var ')
-                    .replace(/export\s+default\s+/g, 'const CONFIG_GRILLE = ');
-
-                try {
-                    // Injection d'un bac à sable rudimentaire pour capter les assignations
-                    // ciblant explicitement l'objet global (window.CONFIG_GRILLE)
-                    const fn = new Function(`
-                        const window = {};
-                        const globalThis = window;
-                        ${sanitizedText};
-                        if (typeof CONFIG_GRILLE !== 'undefined') return CONFIG_GRILLE;
-                        if (window.CONFIG_GRILLE) return window.CONFIG_GRILLE;
-                        return null;
-                    `);
-                    const out = fn();
-                    if (Array.isArray(out) && out.length > 0) categories = out;
-                } catch (evalErr) {
-                    console.error('[GridRepository] Échec Stratégie 1 (Exécution JS) :', evalErr);
-                }
-
-                // Stratégie 2 : Extraction par parcours de caractères (Fallback)
-                if (!categories) {
-                    let startIdx = text.search(/\bCONFIG_GRILLE\s*=\s*\[/i);
-                    if (startIdx !== -1) {
-                        startIdx = text.indexOf('[', startIdx);
-                        let depth = 1, idx = startIdx + 1, inDbl = false, inSgl = false, escape = false;
-                        
-                        while (idx < text.length && depth > 0) {
-                            const ch = text[idx];
-                            if (escape) { escape = false; idx++; continue; }
-                            if (ch === '\\' && (inDbl || inSgl)) { escape = true; idx++; continue; }
-                            if (ch === '"' && !inSgl) { inDbl = !inDbl; idx++; continue; }
-                            if (ch === "'" && !inDbl) { inSgl = !inSgl; idx++; continue; }
-                            if (!inDbl && !inSgl) {
-                                if (ch === '[') depth++;
-                                else if (ch === ']') depth--;
-                            }
-                            idx++;
-                        }
-                        
-                        if (depth === 0) {
-                            try {
-                                const extracted = text.slice(startIdx, idx);
-                                // CRITIQUE : JSON.parse est incompatible avec un Object littéral JS.
-                                // Utilisation d'une évaluation anonyme contrainte pour convertir la chaîne.
-                                categories = new Function(`return ${extracted};`)();
-                                if (!Array.isArray(categories) || categories.length === 0) categories = null;
-                            } catch (parseErr) {
-                                console.error('[GridRepository] Échec Stratégie 2 (Extraction AST textuelle) :', parseErr);
-                            }
-                        }
-                    }
-                }
-
-                // Abandon et refus de créer un fichier par défaut vide si extraction en échec
-                if (!categories || !Array.isArray(categories) || categories.length === 0) {
-                    console.error('[GridRepository] Migration avortée : les données de CONFIG_GRILLE sont inexploitables.');
-                    return false;
-                }
-
-                const payload = { title: 'default', categories: categories };
-                const grillesDir = await configDir.getDirectoryHandle(this.GRILLES_DIR, { create: true });
-                const defaultHandle = await grillesDir.getFileHandle('default.json', { create: true });
-                const writable = await defaultHandle.createWritable();
-                await writable.write(JSON.stringify(payload, null, 2));
-                await writable.close();
-                this._grillesListPromise = null; // Invalidation du cache
-                return true;
-            } catch (e) {
-                if (e.name !== 'NotFoundError') {
-                    console.error('[GridRepository] Erreur I/O durant la migration système :', e);
-                }
-                return false;
-            }
-        }
-
         async _bootstrapDefaultGrid(rootHandle) {
             const configDir = await this._getAppSourcesConfigDir(rootHandle);
             const grillesDir = await configDir.getDirectoryHandle(this.GRILLES_DIR, { create: true });
+            try {
+                await grillesDir.getFileHandle('default.json');
+                console.warn("[GridRepository] default.json existe déjà. Annulation du bootstrap automatique pour éviter l'écrasement.");
+                return;
+            } catch (e) {
+                /* Le fichier n'existe pas, on peut le créer */
+            }
             const fileHandle = await grillesDir.getFileHandle('default.json', { create: true });
             const writable = await fileHandle.createWritable();
             await writable.write(JSON.stringify(this._defaultGrid, null, 2));
@@ -225,19 +142,11 @@
                     throw new Error('Schéma de grille invalide.');
                 }
                 var normalized = this._normalizeGridPayload(data);
-                if (grilleId === 'default' && normalized.sections && normalized.sections.length === 0) {
-                    try {
-                        var migrated = await this._migrateFromConfigGrilleJs(rootHandle);
-                        if (migrated) return this.getGridById(rootHandle, 'default');
-                    } catch (e) { /* ignore */ }
-                }
                 return normalized;
 
             } catch (err) {
                 if (err.name === 'NotFoundError' && grilleId === 'default') {
                     try {
-                        const migrated = await this._migrateFromConfigGrilleJs(rootHandle);
-                        if (migrated) return this.getGridById(rootHandle, 'default');
                         await this._bootstrapDefaultGrid(rootHandle);
                     } catch (e) { /* ignore bootstrap failure */ }
                     return this._defaultGrid;
@@ -276,25 +185,6 @@
                 } catch (e) {
                     if (e.name === 'NotFoundError') {
                         try {
-                            const migrated = await this._migrateFromConfigGrilleJs(rootHandle);
-                            if (migrated) {
-                                const configDir = await this._getAppSourcesConfigDir(rootHandle);
-                                const grillesDir = await configDir.getDirectoryHandle(this.GRILLES_DIR);
-                                const results = [];
-                                for await (const [name, handle] of grillesDir.entries()) {
-                                    if (handle.kind === 'file' && name.endsWith('.json')) {
-                                        const id = name.slice(0, -5);
-                                        try {
-                                            const file = await handle.getFile();
-                                            const data = JSON.parse(await file.text());
-                                            results.push({ id, title: data.title || id });
-                                        } catch (err) {
-                                            results.push({ id, title: id });
-                                        }
-                                    }
-                                }
-                                return results;
-                            }
                             await this._bootstrapDefaultGrid(rootHandle);
                             return [{ id: 'default', title: this._defaultGrid.title }];
                         } catch (bootstrapErr) { /* ignore */ }

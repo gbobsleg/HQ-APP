@@ -1197,7 +1197,11 @@ function app() {
                         }
                     }
                 }
-            } catch (e) { console.error(e); } finally { this.isInitializing = false; }
+            } catch (e) { console.error(e); } finally {
+                // Différer pour laisser le rendu réactif (grille, lastPersistedGridJson) se stabiliser avant d'autoriser le $watch d'auto-save
+                var self = this;
+                setTimeout(function () { self.isInitializing = false; }, 0);
+            }
         },
 
         async loadGridForCampaign(campaignName) {
