@@ -1816,25 +1816,20 @@ function app() {
         },
 
         getDefaultBilanPromptTemplate() {
-            return `Tu es un assistant qui rédige des bilans qualité pour des conseillers. Les données ci-dessous proviennent de debriefs d'évaluations de communications téléphoniques (appels entrants/sortants).
+            return `Rôle : Manager-coach pragmatique.
+Mission : Rédiger un bilan de performance sobre et factuel ({{evalsCount}} évaluations, campagne {{campaignName}}) en utilisant le "tu".
 
-Ta tâche : rédiger UN commentaire de synthèse (bilan manager) qui :
-1) Résume les points forts observés sur la période ;
-2) Identifie les axes d'amélioration prioritaires (en t'appuyant sur les notes et commentaires) ;
-3) Propose des objectifs concrets et mesurables pour la prochaine période.
-Contraintes : style professionnel, bienveillant, factuel. Base-toi uniquement sur les données ci-dessous. Ton commentaire de synthèse doit tenir en 10 lignes maximum.
+Consignes de rédaction :
+1. Format : 5 à 7 lignes. Paragraphe unique, sans listes, sans titres.
+2. Contenu :
+   - Points forts : Note une réussite concrète et son utilité pour l'usager.
+   - Axe de progrès : Identifie un point d'amélioration technique ou comportemental de façon directe.
+   - Conclusion : Ajoute un objectif mesurable uniquement si les données le justifient ; sinon, termine par une simple validation de la dynamique actuelle.
+3. Ton : Sobre, sincère et professionnel. Interdiction d'utiliser des superlatifs (ex: "incroyable", "exceptionnel", "parfait") ou une flatterie excessive. Préfère la précision à l'admiration.
 
----
-
-Contexte :
-  Agent : {{agentName}}
-  Campagne / Période : {{campaignName}}
-  Nombre d'évaluations à synthétiser : {{evalsCount}}
-
-Les blocs ci-dessous sont des évaluations distinctes. Chaque bloc contient un « Commentaire global » qui ne concerne QUE cette évaluation (pas un résumé de toutes les évaluations).
-
+Données sources :
 {{evaluationsBlock}}
----
+
 {{finalInstruction}}`;
         },
 
@@ -1950,7 +1945,7 @@ Les blocs ci-dessous sont des évaluations distinctes. Chaque bloc contient un �
         },
 
         buildBilanPromptForAI() {
-            // Confidentialité PII : aucun prénom/nom d'agent n'est transmis à l'API IA ; {{agentName}} → désignation neutre
+            // Confidentialité PII : aucun prénom/nom d'agent n'est transmis à l'API IA
             const campaignName = this.agentContext.campaignName || 'Campagne';
             const evals = this.bilanForm.evals || [];
             const evalsBlockLines = [];
@@ -2026,7 +2021,6 @@ Les blocs ci-dessous sont des évaluations distinctes. Chaque bloc contient un �
                 const criteriaBlock = reviewLines.length > 0 ? 'Réponses :\n\n' + reviewLines.join('\n') : '(Aucune réponse renseignée.)';
                 const reviewDate = (evals[0] && evals[0].date) ? evals[0].date : 'Date inconnue';
                 return template
-                    .replace(/\{\{agentName\}\}/g, "l'agent")
                     .replace(/\{\{campaignName\}\}/g, campaignName)
                     .replace(/\{\{evalsCount\}\}/g, String(evals.length))
                     .replace(/\{\{evaluationsBlock\}\}/g, evaluationsBlock)
@@ -2035,7 +2029,6 @@ Les blocs ci-dessous sont des évaluations distinctes. Chaque bloc contient un �
                     .replace(/\{\{date\}\}/g, reviewDate);
             }
             return template
-                .replace(/\{\{agentName\}\}/g, "l'agent")
                 .replace(/\{\{campaignName\}\}/g, campaignName)
                 .replace(/\{\{evalsCount\}\}/g, String(evals.length))
                 .replace(/\{\{evaluationsBlock\}\}/g, evaluationsBlock)
@@ -2094,7 +2087,7 @@ Les blocs ci-dessous sont des évaluations distinctes. Chaque bloc contient un �
         },
 
         getDefaultEvalCommentPromptTemplate() {
-            return "Tu es un assistant qui rédige le commentaire global d'une évaluation d'appel pour un conseiller.\nDonnées de l'évaluation ci-dessous (critères, notes, commentaires par critère).\nRédige UN commentaire global en exactement 2 lignes :\n1) Une ligne sur les techniques de communication (conduite d'entretien, écoute, questionnement, etc.).\n2) Une ligne sur la qualité de la réponse apportée au demandeur.\nStyle factuel, bienveillant. Base-toi uniquement sur les données ci-dessous.\n\nOffre : {{offre}} | Note : {{note}}/10 | Date : {{date}}\n\n{{criteriaBlock}}\n\nRédige maintenant le commentaire global en 2 lignes.";
+            return "Rôle : Manager-coach sobre.\nMission : Rédiger un feedback flash pour l'appel du {{date}} (Offre {{offre}} - {{note}}/10) en utilisant le \"tu\".\n\nConsignes de rédaction :\n1. Style : Direct, factuel et sans fioritures. Supprime toute formule de politesse ou compliment générique (type \"Bravo\", \"Bon travail\").\n2. Format : Exactement 2 phrases (ou 2 lignes courtes).\n3. Contenu :\n   - Ligne 1 : Ton diagnostic sur la posture de communication (écoute, questionnement, fluidité).\n   - Ligne 2 : Ton évaluation de la précision technique et de la réponse apportée.\n4. Contrainte : Pas de superlatifs. Préfère les verbes d'action et les constats neutres.\n\nDonnées de l'évaluation :\n{{criteriaBlock}}\n\nRédige maintenant le commentaire global en 2 lignes.";
         },
 
         getDefaultReviewBilanSynthesisTemplate() {
