@@ -2005,6 +2005,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     const date = e.date || 'Date inconnue';
                     const textResp = d.textResponses || {};
                     const boolResp = d.booleanResponses || {};
+                    const scoresData = d.scores || {};
                     this.grid && this.grid.forEach((sec) => {
                         (sec.fields || []).forEach((field) => {
                             if (field.type === 'textarea') {
@@ -2013,6 +2014,12 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                             } else if (field.type === 'boolean') {
                                 const b = boolResp[field.id];
                                 reviewLines.push('  - ' + (field.label || field.id) + ' : ' + (b ? 'Oui' : 'Non'));
+                            } else if (field.type === 'scoring') {
+                                const val = scoresData[field.id];
+                                if (val != null && val !== '') {
+                                    const max = field.max != null ? field.max : 0;
+                                    reviewLines.push('  - ' + (field.label || field.id) + ' : ' + val + '/' + max);
+                                }
                             }
                         });
                     });
@@ -2143,6 +2150,12 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         } else if (field.type === 'boolean') {
                             var b = this.form.booleanResponses && this.form.booleanResponses[field.id];
                             reviewLines.push('  - ' + (field.label || field.id) + ' : ' + (b ? 'Oui' : 'Non'));
+                        } else if (field.type === 'scoring') {
+                            var val = this.form.scores && this.form.scores[field.id];
+                            if (val != null && val !== '') {
+                                var max = field.max != null ? field.max : 0;
+                                reviewLines.push('  - ' + (field.label || field.id) + ' : ' + val + '/' + max);
+                            }
                         }
                     }.bind(this));
                 }.bind(this));
@@ -2166,7 +2179,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             var hasContent = false;
             if (this.form.note === 'N/A') {
                 hasContent = Object.keys(this.form.textResponses || {}).some(function (k) { return ((this.form.textResponses[k] || '').trim() !== ''); }.bind(this)) ||
-                    Object.keys(this.form.booleanResponses || {}).some(function (k) { return this.form.booleanResponses[k]; }.bind(this));
+                    Object.keys(this.form.booleanResponses || {}).some(function (k) { return this.form.booleanResponses[k]; }.bind(this)) ||
+                    Object.keys(this.form.scores || {}).filter(function (k) { var v = this.form.scores[k]; return v != null && v !== ''; }.bind(this)).length > 0;
             } else {
                 hasContent = Object.keys(this.form.scores || {}).filter(function (k) {
                     var v = this.form.scores[k];
@@ -2194,7 +2208,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             var hasContent = false;
             if (this.form.note === 'N/A') {
                 hasContent = Object.keys(this.form.textResponses || {}).some(function (k) { return ((this.form.textResponses[k] || '').trim() !== ''); }.bind(this)) ||
-                    Object.keys(this.form.booleanResponses || {}).some(function (k) { return this.form.booleanResponses[k]; }.bind(this));
+                    Object.keys(this.form.booleanResponses || {}).some(function (k) { return this.form.booleanResponses[k]; }.bind(this)) ||
+                    Object.keys(this.form.scores || {}).filter(function (k) { var v = this.form.scores[k]; return v != null && v !== ''; }.bind(this)).length > 0;
             } else {
                 hasContent = Object.keys(this.form.scores || {}).filter(function (k) {
                     var v = this.form.scores[k];

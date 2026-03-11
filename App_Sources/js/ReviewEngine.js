@@ -11,6 +11,7 @@
     function getDefaultFormState(grid) {
         var textResponses = {};
         var booleanResponses = {};
+        var scores = {};
         var sections = (grid && grid.sections) ? grid.sections : (Array.isArray(grid) ? grid : []);
         sections.forEach(function (sec) {
             (sec.fields || []).forEach(function (field) {
@@ -18,11 +19,13 @@
                     textResponses[field.id] = '';
                 } else if (field.type === 'boolean') {
                     booleanResponses[field.id] = false;
+                } else if (field.type === 'scoring') {
+                    scores[field.id] = field.max != null ? field.max : 0;
                 }
             });
         });
         return {
-            scores: {},
+            scores: scores,
             comments: {},
             textResponses: textResponses,
             booleanResponses: booleanResponses,

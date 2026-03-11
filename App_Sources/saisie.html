@@ -339,9 +339,9 @@
                                 <div class="flex justify-between items-center p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
                                     <div class="flex flex-col">
                                         <span class="text-xs font-bold font-mono text-slate-500" x-text="eval.date"></span>
-                                        <span class="text-[10px] text-slate-400 truncate w-32" x-text="eval.fileContent && eval.fileContent.offre ? eval.fileContent.offre : 'Sans offre'"></span>
+                                        <span x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'" class="text-[10px] text-slate-400 truncate w-32" x-text="eval.fileContent && eval.fileContent.offre ? eval.fileContent.offre : 'Sans offre'"></span>
                                     </div>
-                                    <div class="font-black text-2xl" :class="parseFloat(eval.note) >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="eval.note"></div>
+                                    <div x-show="eval.note !== 'N/A'" class="font-black text-2xl" :class="parseFloat(eval.note) >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="eval.note"></div>
                                 </div>
                             </template>
                             <template x-if="!(bilanForm.evals && bilanForm.evals.length)">
