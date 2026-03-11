@@ -2308,7 +2308,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     });
                     return rest;
                 });
-                const payload = { version: 2, title: (this.gridTitle || this.currentGridId), sections: cleanGrid };
+                const payload = { title: (this.gridTitle || this.currentGridId), sections: cleanGrid };
                 if (this.editingGridContext && this.editingGridContext.type === 'campaign') {
                     const sanitizedName = repository.sanitizeDirectoryName(this.editingGridContext.campaignName);
                     const campaignDirHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedName);
@@ -2683,7 +2683,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             if (!title || !this.rootHandle) return;
             try {
                 const id = await repository.generateGrilleIdFromTitle(this.rootHandle, title);
-                await repository.saveGrid(this.rootHandle, id, { version: 2, title: title.trim(), sections: [] });
+                await repository.saveGrid(this.rootHandle, id, { title: title.trim(), sections: [] });
                 this.grillesList = await repository.getGrillesList(this.rootHandle);
                 await this.selectGridToEdit(id);
                 this.notify("Grille créée.");
@@ -2696,7 +2696,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 const id = await repository.generateGrilleIdFromTitle(this.rootHandle, title);
                 var secs = this.grid || [];
                 const cleanGrid = secs.map(sec => { const { collapsed, ...rest } = sec; return rest; });
-                await repository.saveGrid(this.rootHandle, id, { version: 2, title: title.trim(), sections: cleanGrid });
+                await repository.saveGrid(this.rootHandle, id, { title: title.trim(), sections: cleanGrid });
                 this.grillesList = await repository.getGrillesList(this.rootHandle);
                 await this.selectGridToEdit(id);
                 this.notify("Grille dupliquée.");

@@ -20,50 +20,16 @@
             this.GRILLES_DIR = 'grilles';
         }
 
-        /**
-         * Adaptateur : convertit toute grille (V1 ou V2) en schéma V2 unique { title, sections }.
-         * V1 : categories[].items ou categories[].criteria → sections[].fields avec type: 'scoring'.
-         */
-        _normalizeToV2(data) {
-            const title = (data && typeof data.title === 'string') ? data.title : 'default';
-            let sections = [];
-
-            function toSection(sec, idx, itemsOrFields) {
-                var fields = (itemsOrFields || []).map(function (item) {
-                    return item.type != null ? item : Object.assign({}, item, { type: 'scoring' });
-                });
-                var lbl = sec.label != null ? sec.label : (sec.cat != null ? sec.cat : 'Section ' + (idx + 1));
-                return {
-                    id: sec.id || 'section_' + idx,
-                    label: lbl,
-                    fields: fields,
-                    items: fields
-                };
-            }
-            if (Array.isArray(data)) {
-                sections = data.map(function (cat, idx) {
-                    var items = cat.items || cat.criteria || [];
-                    return toSection(cat, idx, items);
-                });
-            } else if (data && Array.isArray(data.sections)) {
-                sections = data.sections.map(function (sec, idx) {
-                    var fields = sec.fields || sec.items || [];
-                    return toSection(sec, idx, fields);
-                });
-            } else if (data && Array.isArray(data.categories)) {
-                sections = data.categories.map(function (cat, idx) {
-                    var items = cat.items || cat.criteria || [];
-                    return toSection(cat, idx, items);
-                });
-            }
-
-            return { version: 2, title: title, sections: sections };
-        }
-
         _normalizeGridPayload(data) {
-            var out = this._normalizeToV2(data);
-            out.version = 2;
-            return out;
+            if (!data) return { title: 'default', sections: [] };
+            var sections = Array.isArray(data.sections) ? data.sections : [];
+            sections.forEach(function (sec) {
+                if (sec && !sec.items && Array.isArray(sec.fields)) sec.items = sec.fields;
+            });
+            return {
+                title: typeof data.title === 'string' ? data.title : 'default',
+                sections: sections
+            };
         }
 
         _sanitizeForStorage(payload) {
@@ -98,9 +64,7 @@
         }
 
         _validateGridSchema(data) {
-            if (!data) return false;
-            if (Array.isArray(data)) return true;
-            return Array.isArray(data.categories) || Array.isArray(data.sections);
+            return !!(data && typeof data.title === 'string' && Array.isArray(data.sections));
         }
 
         async _getAppSourcesConfigDir(rootHandle) {
