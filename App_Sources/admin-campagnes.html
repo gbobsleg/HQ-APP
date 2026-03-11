@@ -110,7 +110,7 @@
                                         <template x-for="g in grillesList" :key="g.id">
                                             <option :value="g.id" x-text="g.title || g.id"></option>
                                         </template>
-                                        <option value="default" x-show="grillesList.length === 0">default</option>
+                                        <option value="default" x-show="grillesList.length === 0">Grille d'Exemple (à dupliquer)</option>
                                     </select>
                                 </div>
                                 <div class="col-span-12 sm:col-span-2">
