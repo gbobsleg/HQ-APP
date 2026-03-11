@@ -1640,6 +1640,27 @@ function app() {
             return false;
         },
 
+        isEvalComplete() {
+            const sections = (this.grid && this.grid.sections) ? this.grid.sections : (Array.isArray(this.grid) ? this.grid : []);
+            for (let s = 0; s < sections.length; s++) {
+                const fields = sections[s].fields || [];
+                for (let i = 0; i < fields.length; i++) {
+                    const field = fields[i];
+                    if (field.oblig !== true) continue;
+                    if (field.type === 'scoring') {
+                        const val = this.form.scores && this.form.scores[field.id];
+                        if (val == null || val === '') return false;
+                    } else if (field.type === 'textarea') {
+                        const val = (this.form.textResponses && this.form.textResponses[field.id] || '').trim();
+                        if (val === '') return false;
+                    } else if (field.type === 'boolean') {
+                        if (!this.form.booleanResponses || !(field.id in this.form.booleanResponses)) return false;
+                    }
+                }
+            }
+            return true;
+        },
+
         triggerAutoSaveEval() {
             if (this.isCampaignClosed) return;
             this.evalSaveStatus = 'Modifications...';
@@ -1674,11 +1695,11 @@ function app() {
                 await fsManager.writeJsonFile(campaignHandle, fileName, dataToSave);
 
                 currentTab.fileHandle = null;
-                currentTab.status = 'saved';
+                currentTab.status = this.isEvalComplete() ? 'saved' : 'draft';
                 this.lastPersistedEvalJson = JSON.stringify(this.form);
                 this.evalSaveStatus = 'Enregistré';
 
-                if (this.campaignConfig && this.campaignConfig.target_evals === 1 && !isDraft) {
+                if (this.campaignConfig && this.campaignConfig.target_evals === 1 && !isDraft && this.isEvalComplete()) {
                     try {
                         const syntheseText = this.bilanForm.comment || '';
                         const bilanFileName = `bilan_${this.agentContext.agentName.replace(/\s+/g, '_')}_${Date.now()}.json`;
@@ -1693,7 +1714,7 @@ function app() {
                         if (bilanTab) {
                             bilanTab.data = bilanData;
                             bilanTab.data._fileName = bilanFileName;
-                            bilanTab.status = 'saved';
+                            bilanTab.status = 'empty';
                         } else {
                             this.agentContext.tabs.push({
                                 type: 'bilan',
@@ -1701,7 +1722,7 @@ function app() {
                                 label: 'Bilan Global',
                                 data: Object.assign({}, bilanData, { _fileName: bilanFileName }),
                                 fileHandle: null,
-                                status: 'saved'
+                                status: 'empty'
                             });
                         }
 
@@ -1748,6 +1769,19 @@ function app() {
             const currentTab = this.agentContext.tabs[this.agentContext.activeTabIndex];
             if (currentTab.type !== 'bilan') return;
             if (!fsManager) return;
+
+            if (!isSending) {
+                const commentTrimmed = (this.bilanForm.comment || '').trim();
+                if (commentTrimmed === '') {
+                    const currentTabBilan = this.agentContext.tabs.find(t => t.type === 'bilan');
+                    if (currentTabBilan) {
+                        currentTabBilan.status = 'empty';
+                    }
+                    this.bilanForm.status = 'empty';
+                    this.notify("Synthèse vide : saisissez du texte pour enregistrer un brouillon.", "error");
+                    return;
+                }
+            }
 
             try {
                 const campaignHandle = await this.campagnesHandle.getDirectoryHandle(this.agentContext.campaignName);
