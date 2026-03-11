@@ -2446,6 +2446,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 try {
                         const config = await fsManager.readCampaignConfig(dirHandle);
                     this.campaignConfig = config;
+                    this.campaignType = (config && config.campaign_type === 'review') ? 'review' : 'scoring';
                     this.isCampaignClosed = (config && config.status === 'closed');
                     if (config.agent_ids && Array.isArray(config.agent_ids)) {
                         campaignAgentsCount = config.agent_ids.length;
@@ -2473,6 +2474,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     this.campaignAssignments = {};
                     this.campaignAssignToManager = false;
                     this.campaignConfig = null;
+                    this.campaignType = 'scoring';
                     this.isCampaignClosed = false;
                 }
 

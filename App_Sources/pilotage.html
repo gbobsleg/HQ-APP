@@ -167,7 +167,7 @@
                                                     </template>
                                                 </div>
                                                 
-                                                <div class="flex items-center justify-between mt-4">
+                                                <div class="flex items-center justify-between mt-4" x-show="campaignType !== 'review'">
                                                     <div class="text-xs text-slate-500">
                                                         Moyenne : <span class="font-black" :class="agent.avg >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="agent.avg"></span>
                                                     </div>
@@ -185,7 +185,7 @@
                                                         <p class="text-[10px] text-slate-400 uppercase" x-text="agent.site"></p>
                                                     </div>
                                                 </div>
-                                                <div class="text-xs text-slate-500 mt-2">Moyenne : <span class="font-black" :class="agent.avg >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="agent.avg"></span></div>
+                                                <div class="text-xs text-slate-500 mt-2" x-show="campaignType !== 'review'">Moyenne : <span class="font-black" :class="agent.avg >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="agent.avg"></span></div>
                                                 <p class="text-[10px] text-indigo-500 font-bold mt-2">Consulter le dossier →</p>
                                             </a>
                                         </template>
