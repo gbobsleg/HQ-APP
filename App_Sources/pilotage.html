@@ -122,8 +122,8 @@
                                         </div>
 
                                         <a x-show="!isCampaignClosed" :href="'saisie.html?agent=' + encodeURIComponent(agent.name) + '&campagne=' + encodeURIComponent(selectedFolder)" 
-                                           class="w-full block text-center bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 font-bold text-xs py-2 rounded-lg transition-colors border border-slate-100">
-                                            + Évaluer
+                                           class="w-full block text-center bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 font-bold text-xs py-2 rounded-lg transition-colors border border-slate-100">
+                                            📝 Évaluer
                                         </a>
                                         <a x-show="isCampaignClosed" :href="'saisie.html?agent=' + encodeURIComponent(agent.name) + '&campagne=' + encodeURIComponent(selectedFolder)" 
                                            class="w-full block text-center bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs py-2 rounded-lg transition-colors border border-slate-200"
@@ -162,17 +162,17 @@
                                                     </template>
                                                     <template x-if="!agent.hasDraft">
                                                         <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-1 rounded border border-indigo-200">
-                                                            ✍️ À RÉDIGER
+                                                            ⏳ EN ATTENTE
                                                         </span>
                                                     </template>
                                                 </div>
                                                 
-                                                <div class="flex items-center justify-between mt-4" x-show="campaignType !== 'review'">
-                                                    <div class="text-xs text-slate-500">
-                                                        Moyenne : <span class="font-black" :class="agent.avg >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="agent.avg"></span>
-                                                    </div>
-                                                    <span class="text-indigo-600 font-bold text-xs hover:underline flex items-center gap-1">
-                                                        Traiter le bilan <span>→</span>
+                                                <div class="text-xs text-slate-500 mt-2 mb-3" x-show="campaignType !== 'review'">
+                                                    Moyenne : <span class="font-black" :class="agent.avg >= 5 ? 'text-emerald-600' : 'text-rose-600'" x-text="agent.avg"></span>
+                                                </div>
+                                                <div x-show="campaignType !== 'review'">
+                                                    <span class="block w-full text-center bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold py-2.5 rounded-lg transition-colors">
+                                                        ✍️ Rédiger le bilan
                                                     </span>
                                                 </div>
                                             </a>
@@ -208,20 +208,21 @@
                                 <template x-for="(agent, index) in pilotageFilterAgents(workflow.done)" :key="'done-' + index">
                                     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 opacity-75 hover:opacity-100 transition-opacity">
                                         <div class="flex justify-between items-center mb-2">
-                                            <h4 class="font-bold text-slate-600 text-sm line-through decoration-slate-300" x-text="agent.name"></h4>
+                                            <h4 class="font-bold text-slate-700 text-sm" x-text="agent.name"></h4>
                                             <span class="text-lg">✅</span>
                                         </div>
                                         <div class="text-[10px] text-slate-400 flex items-center gap-2">
                                             <span>📅 Envoyé le : <span x-text="new Date(agent.sentDate).toLocaleDateString()"></span></span>
                                         </div>
-                                        <div class="mt-3 flex flex-col gap-1.5">
-                                            <a :href="'saisie.html?agent=' + encodeURIComponent(agent.name) + '&campagne=' + encodeURIComponent(selectedFolder) + '&tab=bilan'" class="text-[10px] text-indigo-400 hover:text-indigo-600 font-bold block">
-                                                Revoir / Renvoyer
+                                        <div class="flex items-center gap-2 mt-4">
+                                            <a :href="'saisie.html?agent=' + encodeURIComponent(agent.name) + '&campagne=' + encodeURIComponent(selectedFolder) + '&tab=bilan'"
+                                               class="flex-1 flex justify-center items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 px-2 rounded-lg transition-colors">
+                                                👁️ Consulter
                                             </a>
                                             <button @click="remettreAgentABilanter(agent.name)"
-                                                    class="text-left text-[10px] font-bold text-amber-600 hover:text-amber-700 py-1 px-2 rounded bg-amber-50 hover:bg-amber-100 border border-amber-100 transition-colors w-fit"
+                                                    class="flex-1 flex justify-center items-center gap-1.5 bg-white border border-amber-200 hover:bg-amber-50 text-amber-700 text-xs font-bold py-2 px-2 rounded-lg transition-colors"
                                                     title="Remettre l'agent dans la colonne À bilanter">
-                                                ↩ Remettre à bilanter
+                                                ↩️ À bilanter
                                             </button>
                                         </div>
                                     </div>
