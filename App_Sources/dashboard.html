@@ -464,7 +464,8 @@
                             <p class="text-xs text-slate-400 mt-1" x-text="'Sur ' + stats.totalAgents + ' agents'"></p>
                         </div>
                         <!-- KPI 2 -->
-                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100"
+                             x-show="campaignConfig && campaignConfig.campaign_type !== 'review'">
                             <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Qualité Moyenne</p>
                             <div class="flex items-baseline gap-2">
                                 <p class="text-4xl font-black" 
@@ -487,7 +488,8 @@
                     </div>
 
                     <!-- Qualité par Site (pleine largeur) -->
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80"
+                         x-show="campaignConfig && campaignConfig.campaign_type !== 'review'">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Qualité par Site</h3>
                         <div class="flex-1 relative min-h-0">
                             <canvas id="sitesChart"></canvas>
@@ -495,7 +497,8 @@
                     </div>
 
                     <!-- Qualité par Offre (pleine largeur) -->
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80"
+                         x-show="campaignConfig && campaignConfig.campaign_type !== 'review'">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Qualité par Offre</h3>
                         <div class="flex-1 relative min-h-0">
                             <canvas id="offersChart"></canvas>
@@ -503,7 +506,9 @@
                     </div>
 
                     <!-- RUBRIQUES (pleine largeur, max 6 par ligne, largeur adaptée au nombre de critères) -->
-                    <div class="w-full grid gap-4" :style="'grid-template-columns: repeat(' + Math.min(6, Object.keys(stats.rubrics || {}).length || 1) + ', 1fr)'">
+                    <div class="w-full grid gap-4"
+                         :style="'grid-template-columns: repeat(' + Math.min(6, Object.keys(stats.rubrics || {}).length || 1) + ', 1fr)'"
+                         x-show="campaignConfig && campaignConfig.campaign_type !== 'review'">
                         <template x-for="(percent, catName) in stats.rubrics" :key="catName">
                             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center min-w-0">
                                 <div class="relative w-20 h-20 flex items-center justify-center mb-2">
@@ -522,7 +527,8 @@
                     </div>
 
                     <!-- GRAPHIQUE DETAIL -->
-                    <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-[400px]">
+                    <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 h-[400px]"
+                         x-show="campaignConfig && campaignConfig.campaign_type !== 'review'">
                         <h3 class="font-black text-slate-800 mb-6 uppercase text-xs tracking-widest">Répartition individuelle des notes</h3>
                         <div class="h-[300px] relative">
                             <canvas id="dashChart"></canvas>
