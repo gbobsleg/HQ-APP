@@ -2315,7 +2315,11 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     await repository.saveSnapshotForCampaign(this.rootHandle, campaignDirHandle, payload);
                 } else {
                     const grille = this.grillesList.find(g => g.id === this.currentGridId);
-                    payload.title = (grille && grille.title) ? grille.title : this.currentGridId;
+                    if (this.currentGridId === 'default') {
+                        payload.title = "Grille d'Exemple (à dupliquer)";
+                    } else {
+                        payload.title = (grille && grille.title) ? grille.title : this.currentGridId;
+                    }
                     await repository.saveGrid(this.rootHandle, this.currentGridId, payload);
                 }
                 var forCompare = secs.map(function (s) { var c = s.collapsed; var r = Object.assign({}, s); delete r.collapsed; return r; });

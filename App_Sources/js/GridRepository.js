@@ -9,7 +9,7 @@
 
     class GridRepository {
         constructor(options = {}) {
-            this._defaultGrid = this._normalizeGridPayload(options.defaultGrid || { title: 'default', sections: [] });
+            this._defaultGrid = this._normalizeGridPayload(options.defaultGrid || { title: 'Grille d\'Exemple (à dupliquer)', sections: [] });
             // Remplacement du cache de valeur par un cache de promesse pour contrer le Cache Stampede
             this._grillesListPromise = null;
 
