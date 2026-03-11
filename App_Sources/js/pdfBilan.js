@@ -125,7 +125,7 @@
                     const label = item.label || item.id || '';
                     const hasHint = !!item.hint;
                     const catCell = firstRowOfCategory
-                        ? { content: cat.cat || '', rowSpan: rowCount, styles: { fontStyle: 'bold', fillColor: [248, 250, 252], textColor: [55, 65, 81] } }
+                        ? { content: cat.label || '', rowSpan: rowCount, styles: { fontStyle: 'bold', fillColor: [248, 250, 252], textColor: [55, 65, 81] } }
                         : null;
                     const labelCell = { content: label, styles: { fontStyle: 'bold', textColor: [30, 41, 59] } };
                     if (hideNotes) {

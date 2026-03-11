@@ -2119,7 +2119,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             const gridSecs = this.grid || [];
             for (let c = 0; c < gridSecs.length; c++) {
                 const sec = gridSecs[c];
-                const secName = sec.label || sec.cat || 'Critères';
+                const secName = sec.label || 'Critères';
                 const fields = sec.fields || [];
                 const lines = [];
                 for (let i = 0; i < fields.length; i++) {
@@ -2707,7 +2707,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         addCategory() {
             this.grid = this.grid || [];
             var arr = [];
-            this.grid.push({ id: 'section_' + Date.now(), label: 'Nouvelle Rubrique', cat: 'Nouvelle Rubrique', fields: arr, items: arr, collapsed: false });
+            this.grid.push({ id: 'section_' + Date.now(), label: 'Nouvelle Rubrique', fields: arr, items: arr, collapsed: false });
         },
         deleteCategory(index) {
             var secs = this.grid || [];

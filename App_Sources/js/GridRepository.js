@@ -37,7 +37,6 @@
                     id: sec.id || 'section_' + idx,
                     label: lbl,
                     fields: fields,
-                    cat: lbl,
                     items: fields
                 };
             }
@@ -73,7 +72,6 @@
             if (Array.isArray(clone.sections)) {
                 clone.sections.forEach(section => {
                     delete section.items;
-                    delete section.cat;
                 });
             }
             return clone;
