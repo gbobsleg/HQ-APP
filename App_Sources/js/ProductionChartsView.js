@@ -46,7 +46,7 @@
     /**
      * Affiche la vue Production & Équipes à partir d'un DTO consolidé.
      * @param {HTMLElement} containerEl
-     * @param {{ production: { telephone: Array, courriels: Array, watt: Array, wattDetail: Array } }} data
+     * @param {{ production: { telephone: Array, courriels: Array, watt: Array, wattDetail: Array }, planning?: { etats: object } }} data
      */
     function renderProductionDashboard(containerEl, data) {
         destroy(containerEl);
@@ -54,6 +54,8 @@
 
         data = data || {};
         var production = data.production || {};
+        var planning = data.planning || {};
+        var planningEtats = planning.etats || {};
         var telRow = (production.telephone && production.telephone[0]) ? production.telephone[0] : null;
         var courRow = (production.courriels && production.courriels[0]) ? production.courriels[0] : null;
         var wattRow = (production.watt && production.watt[0]) ? production.watt[0] : null;
@@ -251,6 +253,72 @@
 
         if (UI && typeof UI.initCollapsibleTableToggles === 'function') {
             UI.initCollapsibleTableToggles(containerEl, false, ['prod-tel-table-container', 'prod-watt-table-container']);
+        }
+
+        // --- Graphique Planning Production (heures par état) ---
+        var planningLabels = [];
+        var planningValues = [];
+        Object.keys(planningEtats).forEach(function (etat) {
+            var node = planningEtats[etat] || {};
+            var v = typeof node.totalHours === 'number' && !isNaN(node.totalHours) ? node.totalHours : 0;
+            if (v > 0) {
+                planningLabels.push(etat);
+                planningValues.push(v);
+            }
+        });
+        var canvasPlanning = getCanvas('planningProdChart', containerEl);
+        if (canvasPlanning && planningLabels.length > 0) {
+            var palette = ['#4f46e5', '#22c55e', '#eab308', '#f97316', '#ec4899', '#06b6d4', '#0ea5e9', '#a855f7'];
+            var totalPlanningHours = planningValues.reduce(function(a, b) { return a + b; }, 0);
+            createChart(canvasPlanning, {
+                type: 'bar',
+                data: {
+                    labels: planningLabels,
+                    datasets: [{
+                        label: 'Heures planifiées',
+                        data: planningValues,
+                        backgroundColor: planningLabels.map(function (_, idx) { return palette[idx % palette.length]; }),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', font: { size: 11, weight: '600' } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Heures', color: '#94a3b8', font: { size: 11, weight: '600' } },
+                            ticks: { color: '#64748b' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    var v = ctx.parsed.y || 0;
+                                    var pct = totalPlanningHours > 0 ? ((v / totalPlanningHours) * 100).toFixed(1) : 0;
+                                    return v.toFixed(2) + ' h (' + pct + '%)';
+                                }
+                            }
+                        },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            color: '#0f172a',
+                            font: { weight: 'bold', size: 10 },
+                            formatter: function (v) {
+                                if (!v || v === 0) return '';
+                                var pct = totalPlanningHours > 0 ? Math.round((v / totalPlanningHours) * 100) : 0;
+                                return v.toFixed(1) + ' h (' + pct + '%)';
+                            }
+                        }
+                    }
+                }
+            });
         }
     }
 

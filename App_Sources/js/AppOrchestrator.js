@@ -925,6 +925,9 @@ function app() {
 
         async init() {
             window.openSharedLink = () => this.openSharedLink();
+            if (typeof window !== 'undefined') {
+                window.HQAppAppInstance = this;
+            }
             this.isInitializing = true;
             this.isAdminCriteresPage = /admin-criteres\.html$/i.test(window.location.pathname || '');
             this._setEnginesFromCampaignType('scoring');
@@ -1026,6 +1029,19 @@ function app() {
                                     if (mgrs && Array.isArray(mgrs)) this.managers = mgrs;
                                 } catch (e) { /* garder liste script */ }
                             }
+
+                            // Chargement des données Planning globales (tous fichiers planning_YYYY-MM.csv)
+                            try {
+                                var repoPlanning = window.HQApp && window.HQApp.StatsRepository;
+                                if (repoPlanning && typeof repoPlanning.loadPlanningStats === 'function') {
+                                    this.globalPlanningData = await repoPlanning.loadPlanningStats(this.rootHandle);
+                                } else {
+                                    this.globalPlanningData = { agents: {} };
+                                }
+                            } catch (e) {
+                                this.globalPlanningData = { agents: {} };
+                            }
+
                             await this.refreshData();
 
                             // Pilotage / Dashboard : sélectionner campagne (URL ?campagne= > mémorisée > première)
@@ -3106,6 +3122,140 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         },
 
         async getStoredHandle() { return new Promise((r)=>{const req=indexedDB.open("HQ_APP_DB",1);req.onupgradeneeded=(e)=>e.target.result.createObjectStore("handles");req.onsuccess=(e)=>{const db=e.target.result;const tx=db.transaction("handles","readonly");const g=tx.objectStore("handles").get("root");g.onsuccess=()=>r(g.result);};}); },
-        async storeHandle(h) { const req=indexedDB.open("HQ_APP_DB",1);req.onsuccess=(e)=>{const db=e.target.result;const tx=db.transaction("handles","readwrite");tx.objectStore("handles").put(h,"root");}; }
+        async storeHandle(h) { const req=indexedDB.open("HQ_APP_DB",1);req.onsuccess=(e)=>{const db=e.target.result;const tx=db.transaction("handles","readwrite");tx.objectStore("handles").put(h,"root");}; },
+
+        _normalizePlanningDateToISO(raw) {
+            if (!raw || typeof raw !== 'string') return '';
+            var str = raw.trim();
+            if (!str) return '';
+
+            // Cas déjà ISO
+            if (/^\\d{4}-\\d{2}-\\d{2}$/.test(str)) return str;
+
+            var parts = str.split(/[\\/\\-]/);
+            if (parts.length !== 3) return '';
+            var d = parseInt(parts[0], 10);
+            var m = parseInt(parts[1], 10);
+            var y = parts[2];
+
+            if (isNaN(d) || isNaN(m)) return '';
+            if (m < 1 || m > 12 || d < 1 || d > 31) return '';
+
+            if (y.length === 2) {
+                var yy = parseInt(y, 10);
+                if (isNaN(yy)) return '';
+                y = (2000 + yy).toString();
+            } else if (y.length === 4) {
+                if (isNaN(parseInt(y, 10))) return '';
+            } else {
+                return '';
+            }
+
+            var mStr = m < 10 ? '0' + m : '' + m;
+            var dStr = d < 10 ? '0' + d : '' + d;
+            return y + '-' + mStr + '-' + dStr;
+        },
+
+        // --- Planning : filtrage global / agent 360 ---
+        getFilteredPlanningStats(startDateStr, endDateStr, agentName = null) {
+            var self = this;
+            console.groupCollapsed('[Planning] Filtrage des données');
+            console.log('1. Paramètres -> Agent:', agentName, '| Du:', startDateStr, 'Au:', endDateStr);
+
+            var planning = this.globalPlanningData && this.globalPlanningData.agents ? this.globalPlanningData : { agents: {} };
+            var agents = planning.agents || {};
+
+            console.log('2. Mémoire globale :', Object.keys(agents).length, 'agents chargés');
+
+            var fromIso = (startDateStr || '').trim();
+            var toIso = (endDateStr || '').trim();
+
+            // 1. VUE GLOBALE (Strictement si agentName est null)
+            if (agentName === null) {
+                var globalEtats = {};
+                Object.keys(agents).forEach((name) => {
+                    var ag = agents[name] || {};
+                    Object.keys(ag.states || {}).forEach((stateName) => {
+                        var state = ag.states[stateName] || {};
+                        var entries = Array.isArray(state.entries) ? state.entries : [];
+                        if (!globalEtats[stateName]) globalEtats[stateName] = { totalHours: 0 };
+                        var bucket = globalEtats[stateName];
+                        for (var i = 0; i < entries.length; i++) {
+                            var e = entries[i];
+                            if (!e || typeof e !== 'object') continue;
+                            var isoDate = self._normalizePlanningDateToISO(e.date || '');
+                            if (!isoDate) continue;
+                            if (fromIso && isoDate < fromIso) continue;
+                            if (toIso && isoDate > toIso) continue;
+                            var h = typeof e.durationHours === 'number' && !isNaN(e.durationHours) ? e.durationHours : 0;
+                            bucket.totalHours += h;
+                        }
+                    });
+                });
+                console.log('3. [Vue Globale] Résultat :', globalEtats);
+                console.groupEnd();
+                return { etats: globalEtats };
+            }
+
+            // 2. VUE 360 AGENT
+            if (agentName === '') {
+                console.log('3. [Vue 360] agentName vide, retour sécurisé {}');
+                console.groupEnd();
+                return { etats: {} }; // Sécurité anti-fuite globale
+            }
+
+            // Normalisation pour comparer "COLAS Christine" et "Christine COLAS"
+            var normalizeName = function(n) {
+                if (!n) return '';
+                var clean = n.toLowerCase()
+                             .replace(/[àáâäãå]/g, 'a').replace(/[èéêë]/g, 'e')
+                             .replace(/[ìíîï]/g, 'i').replace(/[òóôö]/g, 'o')
+                             .replace(/[ùúûü]/g, 'u').replace(/[ç]/g, 'c')
+                             .replace(/[-_]/g, ' ').trim();
+                return clean.split(/\s+/).sort().join(' ');
+            };
+
+            var searchNorm = normalizeName(agentName);
+            var targetAgentKey = null;
+            var agentKeys = Object.keys(agents);
+            
+            for (var k = 0; k < agentKeys.length; k++) {
+                if (normalizeName(agentKeys[k]) === searchNorm) {
+                    targetAgentKey = agentKeys[k];
+                    break;
+                }
+            }
+
+            var agent = targetAgentKey ? agents[targetAgentKey] : { states: {} };
+            var outEtats = {};
+
+            Object.keys(agent.states || {}).forEach((stateName) => {
+                var state = agent.states[stateName] || {};
+                var entries = Array.isArray(state.entries) ? state.entries : [];
+                var totalHours = 0;
+                var filteredEntries = [];
+
+                for (var i = 0; i < entries.length; i++) {
+                    var e = entries[i];
+                    if (!e || typeof e !== 'object') continue;
+                    var isoDate = self._normalizePlanningDateToISO(e.date || '');
+                    if (!isoDate) continue;
+                    if (fromIso && isoDate < fromIso) continue;
+                    if (toIso && isoDate > toIso) continue;
+                    var h = typeof e.durationHours === 'number' && !isNaN(e.durationHours) ? e.durationHours : 0;
+                    totalHours += h;
+                    filteredEntries.push(e);
+                }
+
+                if (filteredEntries.length > 0) {
+                    outEtats[stateName] = { totalHours: totalHours, entries: filteredEntries };
+                }
+            });
+
+            console.log('3. [Vue 360] Cible Agent trouvée :', targetAgentKey);
+            console.log('4. [Vue 360] Résultat :', outEtats);
+            console.groupEnd();
+            return { etats: outEtats };
+        }
     }
 }

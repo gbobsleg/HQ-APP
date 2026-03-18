@@ -994,10 +994,90 @@
         };
     }
 
+    /**
+     * Charge et fusionne tous les fichiers planning_YYYY-MM.csv présents dans Data_Stats/.
+     * Retourne une structure { agents: { [agentName]: { totalHours, states: { [etatPlanning]: { totalHours, entries: [] } } } } }.
+     * @param {FileSystemDirectoryHandle} rootHandle
+     * @returns {Promise<{agents: Object<string, { totalHours: number, states: Object<string, { totalHours: number, entries: Array }> }>}>>}
+     */
+    function loadPlanningStats(rootHandle) {
+        var empty = { agents: {} };
+        if (!fsManager || !rootHandle || typeof window === 'undefined' || !window.PlanningService) {
+            console.warn('[Planning][StatsRepository] Service indisponible ou rootHandle manquant.');
+            return Promise.resolve(empty);
+        }
+
+        return fsManager.getDataStatsDir(rootHandle).then(function (dataStatsDir) {
+            return fsManager.listEntries(dataStatsDir).then(function (entries) {
+                var planningFiles = entries.filter(function (e) {
+                    return e.kind === 'file' && /^planning_\d{4}-\d{2}\.csv$/i.test(e.name);
+                });
+
+                console.log('[Planning][StatsRepository] Fichiers trouvés :', planningFiles.map(function (f) { return f.name; }));
+                if (planningFiles.length === 0) return empty;
+
+                var planningSvc = new window.PlanningService();
+                var aggregated = { agents: {} };
+
+                var promises = planningFiles.map(function (f) {
+                    return fsManager.readFileText(dataStatsDir, f.name).then(function (text) {
+                        console.log('[Planning][StatsRepository] Lecture OK fichier :', f.name, 'taille:', text && text.length);
+                        var parsed = planningSvc.parseCSV(text) || { agents: {} };
+                        var agents = parsed.agents || {};
+
+                        Object.keys(agents).forEach(function (agentName) {
+                            var srcAgent = agents[agentName] || {};
+                            var srcStates = srcAgent.states || {};
+                            if (!aggregated.agents[agentName]) {
+                                aggregated.agents[agentName] = { totalHours: 0, states: {} };
+                            }
+                            var dstAgent = aggregated.agents[agentName];
+                            dstAgent.totalHours += typeof srcAgent.totalHours === 'number' && !isNaN(srcAgent.totalHours)
+                                ? srcAgent.totalHours
+                                : 0;
+
+                            Object.keys(srcStates).forEach(function (stateName) {
+                                var srcState = srcStates[stateName] || {};
+                                if (!dstAgent.states[stateName]) {
+                                    dstAgent.states[stateName] = { totalHours: 0, entries: [] };
+                                }
+                                var dstState = dstAgent.states[stateName];
+                                var addHours = typeof srcState.totalHours === 'number' && !isNaN(srcState.totalHours)
+                                    ? srcState.totalHours
+                                    : 0;
+                                dstState.totalHours += addHours;
+
+                                if (Array.isArray(srcState.entries) && srcState.entries.length > 0) {
+                                    for (var i = 0; i < srcState.entries.length; i++) {
+                                        var entry = srcState.entries[i];
+                                        if (entry && typeof entry === 'object') {
+                                            dstState.entries.push(entry);
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    }).catch(function (err) {
+                        console.error('[Planning][StatsRepository] Erreur lecture fichier planning :', f.name, err);
+                    });
+                });
+
+                return Promise.all(promises).then(function () {
+                    console.log('[Planning][StatsRepository] Données globales chargées :', aggregated);
+                    return aggregated;
+                });
+            });
+        }).catch(function (err) {
+            console.error('[Planning][StatsRepository] Erreur globale loadPlanningStats :', err);
+            return empty;
+        });
+    }
+
     var StatsRepository = {
         loadProductionStats: loadProductionStats,
         aggregatePerimeterStats: aggregatePerimeterStats,
-        loadQualiteHistory: loadQualiteHistory
+        loadQualiteHistory: loadQualiteHistory,
+        loadPlanningStats: loadPlanningStats
     };
 
     global.HQApp.StatsRepository = StatsRepository;

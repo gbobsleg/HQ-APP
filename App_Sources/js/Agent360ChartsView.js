@@ -56,9 +56,9 @@
     }
 
     /**
-     * Dessine les graphiques 360° : historique Qualité (Line) + KPIs Production (Bar) à partir du premier élément.
-     * @param {HTMLElement} containerEl - Conteneur contenant les canvas (ids: agent360-qualite, agent360-telephone, agent360-courriels-volumes, agent360-watt)
-     * @param {object} data - { qualiteHistory: [], production: { telephone: [], courriels: [], watt: [] } }
+     * Dessine les graphiques 360° : historique Qualité (Line) + KPIs Production (Bar) + Planning (Doughnut).
+     * @param {HTMLElement} containerEl - Conteneur contenant les canvas (ids: agent360-qualite, agent360-telephone, agent360-courriels-volumes, agent360-watt, planning360Chart)
+     * @param {object} data - { qualiteHistory: [], production: { telephone: [], courriels: [], watt: [] }, planning?: { etats: object }, agentId?: number }
      */
     function renderAgent360(containerEl, data) {
         destroy(containerEl);
@@ -69,6 +69,8 @@
         data = data || {};
         var qualiteHistory = data.qualiteHistory || [];
         var production = data.production || {};
+        var planning = data.planning || {};
+        var planningEtats = planning.etats || {};
         var courriels = production.courriels || [];
         var watt = production.watt || [];
         var telAll = production.telephone || [];
@@ -150,6 +152,124 @@
                     scales: { y: { min: 0, max: 10 } }
                 }
             });
+        }
+
+        // ---- Graphique Planning (Doughnut) ----
+        var planningLabels = [];
+        var planningValues = [];
+        Object.keys(planningEtats).forEach(function (etat) {
+            var node = planningEtats[etat] || {};
+            var v = typeof node.totalHours === 'number' && !isNaN(node.totalHours) ? node.totalHours : 0;
+            if (v > 0) {
+                planningLabels.push(etat);
+                planningValues.push(v);
+            }
+        });
+        var canvasPlanning = getCanvas('planning360Chart', containerEl);
+        if (canvasPlanning && planningLabels.length > 0) {
+            var palette = ['#4f46e5', '#22c55e', '#eab308', '#f97316', '#ec4899', '#06b6d4', '#0ea5e9', '#a855f7'];
+            var totalPlanningHours = planningValues.reduce(function(a, b) { return a + b; }, 0);
+            createChart(canvasPlanning, {
+                type: 'doughnut',
+                data: {
+                    labels: planningLabels,
+                    datasets: [{
+                        label: 'Heures planifiées',
+                        data: planningValues,
+                        backgroundColor: planningLabels.map(function (_, idx) { return palette[idx % palette.length]; }),
+                        borderWidth: 1,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '60%',
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                usePointStyle: true,
+                                boxWidth: 10
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    var v = context.parsed || 0;
+                                    var pct = totalPlanningHours > 0 ? ((v / totalPlanningHours) * 100).toFixed(1) : 0;
+                                    return context.label + ' : ' + v.toFixed(2) + ' h (' + pct + '%)';
+                                }
+                            }
+                        },
+                        datalabels: {
+                            color: '#0f172a',
+                            font: { weight: 'bold', size: 10 },
+                            textAlign: 'center',
+                            formatter: function (v) {
+                                if (!v || v === 0) return '';
+                                var pct = totalPlanningHours > 0 ? Math.round((v / totalPlanningHours) * 100) : 0;
+                                return v.toFixed(1) + ' h\n(' + pct + '%)';
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ---- Tableau Planning détail par état ----
+        var planningTableContainer = containerEl ? containerEl.querySelector('#agent360-planning-table-container') : null;
+        if (planningTableContainer) {
+            if (planningLabels.length > 0) {
+                var tableHtml = '<div class="flex flex-col h-full">';
+                tableHtml += '<h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Détail Planning</h3>';
+                tableHtml += '<div class="flex-1 overflow-y-auto min-h-0 pr-2">';
+                tableHtml += '<table class="w-full text-left text-sm">';
+                tableHtml += '<thead class="sticky top-0 bg-white z-10">';
+                tableHtml += '<tr>';
+                tableHtml += '<th class="pb-2 font-bold text-slate-500 border-b border-slate-100">État</th>';
+                tableHtml += '<th class="pb-2 font-bold text-slate-500 border-b border-slate-100 text-right">Heures</th>';
+                tableHtml += '<th class="pb-2 font-bold text-slate-500 border-b border-slate-100 text-right">%</th>';
+                tableHtml += '</tr>';
+                tableHtml += '</thead>';
+                tableHtml += '<tbody class="divide-y divide-slate-50">';
+                
+                var planningData = [];
+                for (var i = 0; i < planningLabels.length; i++) {
+                    planningData.push({
+                        label: planningLabels[i],
+                        value: planningValues[i]
+                    });
+                }
+                planningData.sort(function(a, b) { return b.value - a.value; });
+                
+                planningData.forEach(function(item) {
+                    var pct = totalPlanningHours > 0 ? ((item.value / totalPlanningHours) * 100).toFixed(1) : 0;
+                    tableHtml += '<tr class="hover:bg-slate-50 transition-colors">';
+                    tableHtml += '<td class="py-2 font-medium text-slate-700">' + item.label + '</td>';
+                    tableHtml += '<td class="py-2 text-right font-bold text-indigo-600">' + item.value.toFixed(2) + ' h</td>';
+                    tableHtml += '<td class="py-2 text-right text-slate-500">' + pct + '%</td>';
+                    tableHtml += '</tr>';
+                });
+                
+                tableHtml += '</tbody>';
+                tableHtml += '<tfoot class="sticky bottom-0 bg-white z-10">';
+                tableHtml += '<tr>';
+                tableHtml += '<td class="pt-2 font-black text-slate-800 border-t border-slate-100">Total</td>';
+                tableHtml += '<td class="pt-2 text-right font-black text-indigo-600 border-t border-slate-100">' + totalPlanningHours.toFixed(2) + ' h</td>';
+                tableHtml += '<td class="pt-2 text-right font-black text-slate-800 border-t border-slate-100">100%</td>';
+                tableHtml += '</tr>';
+                tableHtml += '</tfoot>';
+                tableHtml += '</table>';
+                tableHtml += '</div></div>';
+                
+                planningTableContainer.innerHTML = tableHtml;
+                planningTableContainer.classList.remove('hidden');
+                planningTableContainer.classList.add('flex');
+            } else {
+                planningTableContainer.classList.add('hidden');
+                planningTableContainer.classList.remove('flex');
+            }
         }
 
         // ---- Filtres par offre (section statique dans le DOM) ----
@@ -390,7 +510,7 @@
                                 type: 'line',
                                 label: 'Moy. Région (Volume)',
                                 data: [
-                                    avgTel.appels_traites || 0,
+                                    null,
                                     null,
                                     null
                                 ],

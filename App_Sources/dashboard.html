@@ -16,6 +16,7 @@
     <script src="js/load-optional-config.js" data-next="../config/agents.js,doc-modal.js,nav.js,../config/config_grille.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="js/GridRepository.js"></script>
     <script src="js/FileSystemManager.js"></script>
+    <script src="js/PlanningService.js"></script>
     <script src="js/StatsRepository.js"></script>
     <script src="js/UIComponents.js"></script>
     <script src="js/Agent360ChartsView.js"></script>
@@ -227,7 +228,17 @@
                     ? repo.aggregatePerimeterStats(production || {}, agentIdsArray)
                     : { production: production || {} };
 
-                view.renderProductionDashboard(container, dto);
+                var planningStats = { etats: {} };
+                try {
+                    var appInstance = window.HQAppAppInstance;
+                    if (appInstance && typeof appInstance.getFilteredPlanningStats === 'function') {
+                        planningStats = appInstance.getFilteredPlanningStats(dateFrom || '', dateTo || '', null) || { etats: {} };
+                    }
+                } catch (e) {
+                    console.error('[Planning] Crash intercepté dans dashboard (production) :', e);
+                }
+
+                view.renderProductionDashboard(container, Object.assign({}, dto, { planning: planningStats }));
             });
         }
         function refreshAgent360Charts(rootHandle, campagnesHandle, agentId, agentDisplayName, agentsList, dateFrom, dateTo) {
@@ -239,6 +250,15 @@
             if (agentId == null || agentId === '' || isNaN(Number(agentId))) return;
             var repo = window.HQApp && window.HQApp.StatsRepository;
             if (!repo) return;
+
+            // Sécurité de nommage
+            if (!agentDisplayName && agentId && agentsList) {
+                var ag = agentsList.find(function(a) { return String(a.id) === String(agentId); });
+                if (ag) {
+                    agentDisplayName = (String(ag.nom || '').toUpperCase() + ' ' + (ag['prénom'] || '')).trim();
+                }
+            }
+
             var agentsRef = (agentsList && Array.isArray(agentsList) && agentsList.length > 0)
                 ? agentsList
                 : (typeof window.LISTE_AGENTS !== 'undefined' && Array.isArray(window.LISTE_AGENTS) ? window.LISTE_AGENTS : []);
@@ -246,7 +266,16 @@
                 repo.loadQualiteHistory(rootHandle, campagnesHandle, agentId, { agentDisplayName: agentDisplayName || '' }),
                 repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
             ]).then(function (results) {
-                view.renderAgent360(container, { qualiteHistory: results[0] || [], production: results[1] || {}, agentId: agentId });
+                var planningStats = { etats: {} };
+                try {
+                    var appInstance = window.HQAppAppInstance;
+                    if (appInstance && typeof appInstance.getFilteredPlanningStats === 'function') {
+                        planningStats = appInstance.getFilteredPlanningStats(dateFrom || '', dateTo || '', agentDisplayName || '') || { etats: {} };
+                    }
+                } catch (e) {
+                    console.error('[Planning] Crash intercepté dans dashboard (agent360) :', e);
+                }
+                view.renderAgent360(container, { qualiteHistory: results[0] || [], production: results[1] || {}, agentId: agentId, planning: planningStats });
             });
         }
         window.refreshProductionDashboard = refreshProductionDashboard;
@@ -581,6 +610,14 @@
                         </div>
                     </div>
                     <div id="prod-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Planning – Heures planifiées par état (agrégé) -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80 lg:col-span-2">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Heures planifiées par état</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="planningProdChart"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -633,6 +670,17 @@
                     </div>
                     <!-- Tableau détail Watt par circuit : col-span-2 -->
                     <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Planning – Répartition des états -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Répartition des états</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="planning360Chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Planning - Tableau détail -->
+                    <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 hidden"></div>
 
                     <!-- Évolution Qualité : dernière position, pleine largeur -->
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
