@@ -1436,6 +1436,7 @@ function app() {
             
             var agentId = parseInt(this.agentContext.agentId, 10);
             var agentName = this.agentContext.agentName || '';
+            var agentDisplayName = agentName || '';
             var repo = window.HQApp && window.HQApp.StatsRepository;
             var view = window.HQApp && window.HQApp.Agent360ChartsView;
             
@@ -1450,15 +1451,34 @@ function app() {
             // Correction architecturale : Injection du référentiel du composant plutôt que du scope global
             var agentsRef = (this.agents && this.agents.length > 0) ? this.agents : (this.allAgents || []);
             
+            // Planning stats : utilisées par Agent360ChartsView pour remplir le doughnut + le tableau.
+            var planningStats = { etats: {} };
+            try {
+                var agentsList = (self.agentsList && Array.isArray(self.agentsList)) ? self.agentsList
+                    : (self.allAgents && Array.isArray(self.allAgents)) ? self.allAgents
+                    : (self.agents && Array.isArray(self.agents)) ? self.agents
+                    : [];
+                if (agentsList.length > 0) {
+                    var agentObj = agentsList.find(function (a) { return a && Number(a.id) === Number(agentId); });
+                    if (agentObj) {
+                        agentDisplayName = self.getAgentDisplayName ? self.getAgentDisplayName(agentObj) : agentDisplayName;
+                    }
+                }
+                planningStats = self.getFilteredPlanningStats(dateFrom, dateTo, agentDisplayName) || { etats: {} };
+            } catch (e) {
+                console.error('[Planning] Crash intercepté dans saisie (agent360) :', e);
+            }
+
             Promise.all([
-                repo.loadQualiteHistory(this.rootHandle, this.campagnesHandle, agentId, { agentDisplayName: agentName }),
+                repo.loadQualiteHistory(this.rootHandle, this.campagnesHandle, agentId, { agentDisplayName: agentDisplayName }),
                 repo.loadProductionStats(this.rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
             ]).then(function (results) {
                 view.destroy(container);
                 view.renderAgent360(container, {
                     qualiteHistory: results[0] || [],
                     production: results[1] || {},
-                    agentId: agentId
+                    agentId: agentId,
+                    planning: planningStats
                 });
             }).catch(function (err) {
                 console.error("Panel 360 load error:", err);

@@ -56,6 +56,16 @@
                     first = new Date(y, m, 1, 12, 0, 0, 0);
                     last = new Date(y, m + 1, 0, 12, 0, 0, 0);
                     return [_isoDate(first), _isoDate(last)];
+                case 'ce_trimestre':
+                    y = ref.getFullYear();
+                    // Trimestre courant (0..3)
+                    var q = Math.floor(ref.getMonth() / 3);
+                    // Mois de début de trimestre
+                    var startMonth = q * 3;
+                    first = new Date(y, startMonth, 1, 12, 0, 0, 0);
+                    // Dernier jour du trimestre (jour 0 du mois suivant = dernier jour du trimestre)
+                    last = new Date(y, startMonth + 3, 0, 12, 0, 0, 0);
+                    return [_isoDate(first), _isoDate(last)];
                 case 'mois_precedent':
                     ref.setMonth(ref.getMonth() - 1);
                     y = ref.getFullYear();
@@ -314,6 +324,8 @@
                     <div class="flex flex-wrap gap-1 mt-2">
                         <button type="button" @click="window.applyPreset('cette_annee', $refs.datePickerInput)"
                             class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Cette année</button>
+                        <button type="button" @click="window.applyPreset('ce_trimestre', $refs.datePickerInput)"
+                            class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Ce trimestre</button>
                         <button type="button" @click="window.applyPreset('ce_mois', $refs.datePickerInput)"
                             class="px-2 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700 transition-colors">Ce mois</button>
                         <button type="button" @click="window.applyPreset('cette_semaine', $refs.datePickerInput)"

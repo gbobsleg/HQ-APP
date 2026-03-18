@@ -274,7 +274,15 @@
 
         // ---- Filtres par offre (section statique dans le DOM) ----
         var filtersContainer = containerEl.querySelector('#agent360-tel-filters');
+        // Conserve la dernière offre sélectionnée entre les refresh (changement de période).
+        // Le conteneur DOM persiste pendant `view.destroy(container)` donc on peut stocker un attribut.
         var currentSelectedOffre = 'GLOBAL';
+        try {
+            if (containerEl && typeof containerEl.getAttribute === 'function') {
+                var savedOffre = containerEl.getAttribute('data-agent360-selected-offre');
+                if (savedOffre) currentSelectedOffre = String(savedOffre);
+            }
+        } catch (e) {}
 
         if (filtersContainer) {
             filtersContainer.innerHTML = '';
@@ -286,11 +294,20 @@
                     if (o.offre && offresUniques.indexOf(o.offre) === -1) offresUniques.push(o.offre);
                 });
             }
+            // Si l'offre sauvegardée n'est pas disponible dans le nouveau périmètre, retomber sur GLOBAL.
+            if (offresUniques.indexOf(currentSelectedOffre) === -1) {
+                currentSelectedOffre = 'GLOBAL';
+                if (containerEl && typeof containerEl.setAttribute === 'function') {
+                    containerEl.setAttribute('data-agent360-selected-offre', currentSelectedOffre);
+                }
+            }
+
             offresUniques.forEach(function(offre) {
                 var btn = document.createElement('button');
+                var isSelected = String(offre) === String(currentSelectedOffre);
                 var isGlobal = offre === 'GLOBAL';
                 btn.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors ' +
-                    (isGlobal ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50');
+                    (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50');
                 btn.textContent = isGlobal ? 'Global' : offre;
                 btn.setAttribute('data-offre', offre);
                 btn.onclick = function() {
@@ -299,6 +316,9 @@
                     });
                     this.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600';
                     currentSelectedOffre = offre;
+                    if (containerEl && typeof containerEl.setAttribute === 'function') {
+                        containerEl.setAttribute('data-agent360-selected-offre', currentSelectedOffre);
+                    }
                     renderTelephoneSection(currentSelectedOffre);
                 };
                 filtersContainer.appendChild(btn);
