@@ -31,6 +31,77 @@
         return containerEl.querySelector('[id="' + id + '"]');
     }
 
+    function toNumber(value) {
+        var n = parseFloat(value);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function sum(values) {
+        if (!values || !values.length) return 0;
+        return values.reduce(function (acc, v) { return acc + toNumber(v); }, 0);
+    }
+
+    function clearEmptyState(canvas) {
+        if (!canvas) return;
+        var parent = canvas.parentElement;
+        if (!parent) return;
+        var marker = canvas.id || '';
+        var existing = parent.querySelector('[data-empty-state-for="' + marker + '"]');
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        canvas.classList.remove('hidden');
+    }
+
+    function showEmptyState(canvas, title, subtitle) {
+        if (!canvas) return;
+        var parent = canvas.parentElement;
+        if (!parent) return;
+        clearEmptyState(canvas);
+        canvas.classList.add('hidden');
+
+        var marker = canvas.id || '';
+        var stateEl = document.createElement('div');
+        stateEl.setAttribute('data-empty-state-for', marker);
+        stateEl.className = 'h-full min-h-[220px] w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 flex items-center justify-center';
+        stateEl.innerHTML =
+            '<div class="text-center px-6 py-4">' +
+                '<div class="mx-auto mb-3 w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400">' +
+                    '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"></path>' +
+                    '</svg>' +
+                '</div>' +
+                '<p class="text-sm font-bold text-slate-600">' + (title || 'Aucune donnée') + '</p>' +
+                '<p class="mt-1 text-xs text-slate-400">' + (subtitle || 'Aucune activité sur la période sélectionnée.') + '</p>' +
+            '</div>';
+        parent.appendChild(stateEl);
+    }
+
+    function isPlanningEmpty(planningValues) {
+        return !planningValues || planningValues.length === 0 || sum(planningValues) <= 0;
+    }
+
+    function isTelephoneEmpty(telRow) {
+        if (!telRow) return true;
+        var total = sum([
+            telRow.appels_traites,
+            telRow.identifications,
+            telRow.reponses_immediates,
+            telRow.dmt,
+            telRow.dmc,
+            telRow.dmpa
+        ]);
+        return total <= 0;
+    }
+
+    function isCourrielsEmpty(courRow) {
+        if (!courRow) return true;
+        return sum([courRow.cloture, courRow.envoi_watt, courRow.reponse_directe]) <= 0;
+    }
+
+    function isWattEmpty(wattRow) {
+        if (!wattRow) return true;
+        return sum([wattRow.cloture_manuelle, wattRow.reroutage_individuel, wattRow.transfert_prod]) <= 0;
+    }
+
     function createChart(canvas, config) {
         if (!canvas || !ChartLib || !config) return null;
         if (typeof ChartDataLabels !== 'undefined') {
@@ -63,164 +134,188 @@
 
         // --- Graphique Téléphone - Efficacité ---
         var canvasTel = getCanvas('prod-telephone', containerEl);
-        if (canvasTel && telRow) {
-            createChart(canvasTel, {
-                type: 'bar',
-                data: {
-                    labels: ['Appels traités', "Taux d'identification (%)", 'Taux de réponse immédiate (%)'],
-                    datasets: [
-                        {
-                            label: 'Équipe (Volume)',
-                            data: [parseFloat(telRow.appels_traites) || 0, null, null],
-                            backgroundColor: '#06b6d4',
-                            borderRadius: 4,
-                            yAxisID: 'y'
-                        },
-                        {
-                            label: 'Équipe (Taux %)',
-                            data: [null, (parseFloat(telRow.identifications) || 0) * 100, (parseFloat(telRow.reponses_immediates) || 0) * 100],
-                            backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
-                            borderRadius: 4,
-                            yAxisID: 'y1'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        datalabels: {
-                            color: '#fff',
-                            font: { weight: 'bold' },
-                            formatter: function (value, context) {
-                                if (value == null || value === 0) return '';
-                                if (context.datasetIndex === 1) return Math.round(value) + '%';
-                                return Math.round(value);
+        if (canvasTel) {
+            var telIsEmpty = isTelephoneEmpty(telRow);
+            clearEmptyState(canvasTel);
+            if (telIsEmpty) {
+                showEmptyState(canvasTel, 'Aucune donnée', 'Aucun appel traité sur la période sélectionnée.');
+            } else {
+                createChart(canvasTel, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Appels traités', "Taux d'identification (%)", 'Taux de réponse immédiate (%)'],
+                        datasets: [
+                            {
+                                label: 'Équipe (Volume)',
+                                data: [parseFloat(telRow.appels_traites) || 0, null, null],
+                                backgroundColor: '#06b6d4',
+                                borderRadius: 4,
+                                yAxisID: 'y'
+                            },
+                            {
+                                label: 'Équipe (Taux %)',
+                                data: [null, (parseFloat(telRow.identifications) || 0) * 100, (parseFloat(telRow.reponses_immediates) || 0) * 100],
+                                backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
+                                borderRadius: 4,
+                                yAxisID: 'y1'
                             }
-                        }
+                        ]
                     },
-                    scales: {
-                        x: { stacked: false, barPercentage: 1.0, categoryPercentage: 1.0 },
-                        y: { type: 'linear', display: true, position: 'left', beginAtZero: true, stacked: false },
-                        y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, stacked: false }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                color: '#fff',
+                                font: { weight: 'bold' },
+                                formatter: function (value, context) {
+                                    if (value == null || value === 0) return '';
+                                    if (context.datasetIndex === 1) return Math.round(value) + '%';
+                                    return Math.round(value);
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { stacked: false, barPercentage: 1.0, categoryPercentage: 1.0 },
+                            y: { type: 'linear', display: true, position: 'left', beginAtZero: true, stacked: false },
+                            y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, stacked: false }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         // --- Graphique Téléphone - Temps ---
         var canvasTelDmt = getCanvas('prod-telephone-dmt', containerEl);
-        if (canvasTelDmt && telRow) {
-            createChart(canvasTelDmt, {
-                type: 'bar',
-                data: {
-                    labels: ['DMT', 'DMC', 'DMPA'],
-                    datasets: [
-                        {
-                            label: 'Temps (MM:SS)',
-                            data: [parseFloat(telRow.dmt) || 0, parseFloat(telRow.dmc) || 0, parseFloat(telRow.dmpa) || 0],
-                            backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                            borderRadius: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function (context) {
-                                    var val = context.parsed.y || 0;
-                                    return context.dataset.label + ': ' + formatMmSs(val);
+        if (canvasTelDmt) {
+            var telDmtIsEmpty = isTelephoneEmpty(telRow);
+            clearEmptyState(canvasTelDmt);
+            if (telDmtIsEmpty) {
+                showEmptyState(canvasTelDmt, 'Aucune donnée', 'Aucun temps de traitement sur la période sélectionnée.');
+            } else {
+                createChart(canvasTelDmt, {
+                    type: 'bar',
+                    data: {
+                        labels: ['DMT', 'DMC', 'DMPA'],
+                        datasets: [
+                            {
+                                label: 'Temps (MM:SS)',
+                                data: [parseFloat(telRow.dmt) || 0, parseFloat(telRow.dmc) || 0, parseFloat(telRow.dmpa) || 0],
+                                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (context) {
+                                        var val = context.parsed.y || 0;
+                                        return context.dataset.label + ': ' + formatMmSs(val);
+                                    }
+                                }
+                            },
+                            datalabels: {
+                                color: '#fff',
+                                font: { weight: 'bold' },
+                                formatter: function (value) {
+                                    if (!value || value === 0) return '';
+                                    return formatMmSs(value);
                                 }
                             }
                         },
-                        datalabels: {
-                            color: '#fff',
-                            font: { weight: 'bold' },
-                            formatter: function (value) {
-                                if (!value || value === 0) return '';
-                                return formatMmSs(value);
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                callback: function (value) { return formatMmSs(value); }
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function (value) { return formatMmSs(value); }
+                                }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
         }
 
         // --- Graphique Courriels ---
         var canvasCour = getCanvas('prod-courriels-volumes', containerEl);
-        if (canvasCour && courRow) {
-            createChart(canvasCour, {
-                type: 'bar',
-                data: {
-                    labels: ['Clôture', 'Envoi Watt', 'Rép. directe'],
-                    datasets: [
-                        {
-                            label: 'Équipe',
-                            data: [parseFloat(courRow.cloture) || 0, parseFloat(courRow.envoi_watt) || 0, parseFloat(courRow.reponse_directe) || 0],
-                            backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                            borderRadius: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        datalabels: {
-                            color: '#fff',
-                            font: { weight: 'bold' },
-                            formatter: function (value) { return (!value || value === 0) ? '' : Math.round(value); }
-                        }
+        if (canvasCour) {
+            var courIsEmpty = isCourrielsEmpty(courRow);
+            clearEmptyState(canvasCour);
+            if (courIsEmpty) {
+                showEmptyState(canvasCour, 'Aucune donnée', 'Aucun courriel traité sur la période sélectionnée.');
+            } else {
+                createChart(canvasCour, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Clôture', 'Envoi Watt', 'Rép. directe'],
+                        datasets: [
+                            {
+                                label: 'Équipe',
+                                data: [parseFloat(courRow.cloture) || 0, parseFloat(courRow.envoi_watt) || 0, parseFloat(courRow.reponse_directe) || 0],
+                                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
+                                borderRadius: 4
+                            }
+                        ]
                     },
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                color: '#fff',
+                                font: { weight: 'bold' },
+                                formatter: function (value) { return (!value || value === 0) ? '' : Math.round(value); }
+                            }
+                        },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
         }
 
         // --- Graphique WATT ---
         var canvasWatt = getCanvas('prod-watt', containerEl);
-        if (canvasWatt && wattRow) {
-            createChart(canvasWatt, {
-                type: 'bar',
-                data: {
-                    labels: ['Clôture', 'Reroutage', 'Transfert'],
-                    datasets: [
-                        {
-                            label: 'Équipe',
-                            data: [parseFloat(wattRow.cloture_manuelle) || 0, parseFloat(wattRow.reroutage_individuel) || 0, parseFloat(wattRow.transfert_prod) || 0],
-                            backgroundColor: ['#f59e0b', '#ef4444', '#ec4899'],
-                            borderRadius: 4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        datalabels: {
-                            color: '#fff',
-                            font: { weight: 'bold' },
-                            formatter: function (value) { return (!value || value === 0) ? '' : (Math.round(value * 10) / 10); }
-                        }
+        if (canvasWatt) {
+            var wattIsEmpty = isWattEmpty(wattRow);
+            clearEmptyState(canvasWatt);
+            if (wattIsEmpty) {
+                showEmptyState(canvasWatt, 'Aucune donnée', 'Aucune action WATT sur la période sélectionnée.');
+            } else {
+                createChart(canvasWatt, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Clôture', 'Reroutage', 'Transfert'],
+                        datasets: [
+                            {
+                                label: 'Équipe',
+                                data: [parseFloat(wattRow.cloture_manuelle) || 0, parseFloat(wattRow.reroutage_individuel) || 0, parseFloat(wattRow.transfert_prod) || 0],
+                                backgroundColor: ['#f59e0b', '#ef4444', '#ec4899'],
+                                borderRadius: 4
+                            }
+                        ]
                     },
-                    scales: { y: { beginAtZero: true } }
-                }
-            });
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                color: '#fff',
+                                font: { weight: 'bold' },
+                                formatter: function (value) { return (!value || value === 0) ? '' : (Math.round(value * 10) / 10); }
+                            }
+                        },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
         }
 
         // --- Tableaux (UIComponents) ---
@@ -267,7 +362,12 @@
             }
         });
         var canvasPlanning = getCanvas('planningProdChart', containerEl);
-        if (canvasPlanning && planningLabels.length > 0) {
+        if (canvasPlanning) {
+            var planningIsEmpty = isPlanningEmpty(planningValues);
+            clearEmptyState(canvasPlanning);
+            if (planningIsEmpty) {
+                showEmptyState(canvasPlanning, 'Aucune donnée', 'Aucune heure planifiée sur la période sélectionnée.');
+            } else {
             var palette = ['#4f46e5', '#22c55e', '#eab308', '#f97316', '#ec4899', '#06b6d4', '#0ea5e9', '#a855f7'];
             var totalPlanningHours = planningValues.reduce(function(a, b) { return a + b; }, 0);
             createChart(canvasPlanning, {
@@ -319,6 +419,7 @@
                     }
                 }
             });
+            }
         }
     }
 

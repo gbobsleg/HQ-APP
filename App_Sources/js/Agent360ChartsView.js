@@ -40,6 +40,77 @@
         return document.getElementById(id);
     }
 
+    function toNumber(value) {
+        var n = parseFloat(value);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function sum(values) {
+        if (!values || !values.length) return 0;
+        return values.reduce(function (acc, v) { return acc + toNumber(v); }, 0);
+    }
+
+    function clearEmptyState(canvas) {
+        if (!canvas) return;
+        var parent = canvas.parentElement;
+        if (!parent) return;
+        var marker = canvas.id || '';
+        var existing = parent.querySelector('[data-empty-state-for="' + marker + '"]');
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        canvas.classList.remove('hidden');
+    }
+
+    function showEmptyState(canvas, title, subtitle) {
+        if (!canvas) return;
+        var parent = canvas.parentElement;
+        if (!parent) return;
+        clearEmptyState(canvas);
+        canvas.classList.add('hidden');
+
+        var marker = canvas.id || '';
+        var stateEl = document.createElement('div');
+        stateEl.setAttribute('data-empty-state-for', marker);
+        stateEl.className = 'h-full min-h-[220px] w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 flex items-center justify-center';
+        stateEl.innerHTML =
+            '<div class="text-center px-6 py-4">' +
+                '<div class="mx-auto mb-3 w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400">' +
+                    '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+                        '<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"></path>' +
+                    '</svg>' +
+                '</div>' +
+                '<p class="text-sm font-bold text-slate-600">' + (title || 'Aucune donnée') + '</p>' +
+                '<p class="mt-1 text-xs text-slate-400">' + (subtitle || 'Aucune activité sur la période sélectionnée.') + '</p>' +
+            '</div>';
+        parent.appendChild(stateEl);
+    }
+
+    function isPlanningEmpty(planningValues) {
+        return !planningValues || planningValues.length === 0 || sum(planningValues) <= 0;
+    }
+
+    function isTelephoneEmpty(telRow) {
+        if (!telRow) return true;
+        var total = sum([
+            telRow.appels_traites,
+            telRow.identifications,
+            telRow.reponses_immediates,
+            telRow.dmt,
+            telRow.dmc,
+            telRow.dmpa
+        ]);
+        return total <= 0;
+    }
+
+    function isCourrielsEmpty(courRow) {
+        if (!courRow) return true;
+        return sum([courRow.cloture, courRow.envoi_watt, courRow.reponse_directe]) <= 0;
+    }
+
+    function isWattEmpty(wattRow) {
+        if (!wattRow) return true;
+        return sum([wattRow.cloture_manuelle, wattRow.reroutage_individuel, wattRow.transfert_prod]) <= 0;
+    }
+
     /**
      * Crée un graphique en détruisant l'éventuelle instance existante sur ce canvas.
      */
@@ -107,51 +178,57 @@
         }
         var canvasQualite = getCanvas('agent360-qualite', containerEl);
         if (canvasQualite) {
-            createChart(canvasQualite, {
-                type: 'bar',
-                data: {
-                    labels: labelsQualite,
-                    datasets: [
-                        {
-                            type: 'bar',
-                            label: 'Note évaluation',
-                            data: notesEval,
-                            backgroundColor: '#6366f1',
-                            borderRadius: 4,
-                            order: 1
-                        },
-                        {
-                            type: 'line',
-                            label: 'Moyenne campagne',
-                            data: qualAvgByIndex,
-                            borderColor: '#ef4444',
-                            backgroundColor: '#ef4444',
-                            borderWidth: 3,
-                            tension: 0.2,
-                            order: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        datalabels: {
-                            color: '#6366f1',
-                            align: 'top',
-                            font: { weight: 'bold' },
-                            formatter: function(v, ctx) {
-                                if (!v || v === 0) return '';
-                                if (ctx.datasetIndex === 1) {
+            var isQualiteEmpty = labelsQualite.length === 0 || sum(notesEval) <= 0;
+            clearEmptyState(canvasQualite);
+            if (isQualiteEmpty) {
+                showEmptyState(canvasQualite, 'Aucune évaluation', 'Aucune note qualité sur la période sélectionnée.');
+            } else {
+                createChart(canvasQualite, {
+                    type: 'bar',
+                    data: {
+                        labels: labelsQualite,
+                        datasets: [
+                            {
+                                type: 'bar',
+                                label: 'Note évaluation',
+                                data: notesEval,
+                                backgroundColor: '#6366f1',
+                                borderRadius: 4,
+                                order: 1
+                            },
+                            {
+                                type: 'line',
+                                label: 'Moyenne campagne',
+                                data: qualAvgByIndex,
+                                borderColor: '#ef4444',
+                                backgroundColor: '#ef4444',
+                                borderWidth: 3,
+                                tension: 0.2,
+                                order: 0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            datalabels: {
+                                color: '#6366f1',
+                                align: 'top',
+                                font: { weight: 'bold' },
+                                formatter: function(v, ctx) {
+                                    if (!v || v === 0) return '';
+                                    if (ctx.datasetIndex === 1) {
+                                        return v.toFixed(2);
+                                    }
                                     return v.toFixed(2);
                                 }
-                                return v.toFixed(2);
                             }
-                        }
-                    },
-                    scales: { y: { min: 0, max: 10 } }
-                }
-            });
+                        },
+                        scales: { y: { min: 0, max: 10 } }
+                    }
+                });
+            }
         }
 
         // ---- Graphique Planning (Doughnut) ----
@@ -166,7 +243,12 @@
             }
         });
         var canvasPlanning = getCanvas('planning360Chart', containerEl);
-        if (canvasPlanning && planningLabels.length > 0) {
+        if (canvasPlanning) {
+            var planningIsEmpty = isPlanningEmpty(planningValues);
+            clearEmptyState(canvasPlanning);
+            if (planningIsEmpty) {
+                showEmptyState(canvasPlanning, 'Aucune donnée', 'Aucune heure planifiée sur la période sélectionnée.');
+            } else {
             var palette = ['#4f46e5', '#22c55e', '#eab308', '#f97316', '#ec4899', '#06b6d4', '#0ea5e9', '#a855f7'];
             var totalPlanningHours = planningValues.reduce(function(a, b) { return a + b; }, 0);
             createChart(canvasPlanning, {
@@ -215,6 +297,7 @@
                     }
                 }
             });
+            }
         }
 
         // ---- Tableau Planning détail par état ----
@@ -499,249 +582,261 @@
 
             var canvasTel = getCanvas('agent360-telephone', containerEl);
             if (canvasTel) {
-                createChart(canvasTel, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Appels traités', "Taux d'identification (%)", 'Taux de réponse immédiate (%)'],
-                        datasets: [
-                            {
-                                label: 'Agent (Volume)',
-                                data: [
-                                    parseFloat(telRow.appels_traites) || 0,
-                                    null,
-                                    null
-                                ],
-                                backgroundColor: '#06b6d4',
-                                borderRadius: 4,
-                                yAxisID: 'y'
-                            },
-                            {
-                                label: 'Agent (Taux %)',
-                                data: [
-                                    null,
-                                    (parseFloat(telRow.identifications) || 0) * 100,
-                                    (parseFloat(telRow.reponses_immediates) || 0) * 100
-                                ],
-                                backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
-                                borderRadius: 4,
-                                yAxisID: 'y1'
-                            },
-                            {
-                                type: 'line',
-                                label: 'Moy. Région (Volume)',
-                                data: [
-                                    null,
-                                    null,
-                                    null
-                                ],
-                                borderColor: '#ef4444',
-                                backgroundColor: '#ef4444',
-                                borderWidth: 3,
-                                pointStyle: 'line',
-                                pointRadius: 25,
-                                pointHoverRadius: 25,
-                                showLine: false,
-                                yAxisID: 'y',
+                var telIsEmpty = isTelephoneEmpty(telRow);
+                clearEmptyState(canvasTel);
+                if (telIsEmpty) {
+                    showEmptyState(canvasTel, 'Aucune donnée', 'Aucun appel traité sur la période sélectionnée.');
+                } else {
+                    createChart(canvasTel, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Appels traités', "Taux d'identification (%)", 'Taux de réponse immédiate (%)'],
+                            datasets: [
+                                {
+                                    label: 'Agent (Volume)',
+                                    data: [
+                                        parseFloat(telRow.appels_traites) || 0,
+                                        null,
+                                        null
+                                    ],
+                                    backgroundColor: '#06b6d4',
+                                    borderRadius: 4,
+                                    yAxisID: 'y'
+                                },
+                                {
+                                    label: 'Agent (Taux %)',
+                                    data: [
+                                        null,
+                                        (parseFloat(telRow.identifications) || 0) * 100,
+                                        (parseFloat(telRow.reponses_immediates) || 0) * 100
+                                    ],
+                                    backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
+                                    borderRadius: 4,
+                                    yAxisID: 'y1'
+                                },
+                                {
+                                    type: 'line',
+                                    label: 'Moy. Région (Volume)',
+                                    data: [
+                                        null,
+                                        null,
+                                        null
+                                    ],
+                                    borderColor: '#ef4444',
+                                    backgroundColor: '#ef4444',
+                                    borderWidth: 3,
+                                    pointStyle: 'line',
+                                    pointRadius: 25,
+                                    pointHoverRadius: 25,
+                                    showLine: false,
+                                    yAxisID: 'y',
+                                    datalabels: {
+                                        align: 'right',
+                                        anchor: 'center',
+                                        offset: 4,
+                                        color: '#ef4444',
+                                        font: { weight: 'bold', size: 11 },
+                                        backgroundColor: 'rgba(255,255,255,0.9)',
+                                        borderRadius: 3,
+                                        padding: { left: 3, right: 3, top: 1, bottom: 1 },
+                                        formatter: function(value) {
+                                            if (!value || value === 0) return '';
+                                            return Math.round(value);
+                                        }
+                                    }
+                                },
+                                {
+                                    type: 'line',
+                                    label: 'Moy. Région (Taux %)',
+                                    data: [
+                                        null,
+                                        (avgTel.identifications || 0) * 100,
+                                        (avgTel.reponses_immediates || 0) * 100
+                                    ],
+                                    borderColor: '#ef4444',
+                                    backgroundColor: '#ef4444',
+                                    borderWidth: 3,
+                                    pointStyle: 'line',
+                                    pointRadius: 25,
+                                    pointHoverRadius: 25,
+                                    showLine: false,
+                                    yAxisID: 'y1',
+                                    datalabels: {
+                                        align: 'right',
+                                        anchor: 'center',
+                                        offset: 4,
+                                        color: '#ef4444',
+                                        font: { weight: 'bold', size: 11 },
+                                        backgroundColor: 'rgba(255,255,255,0.9)',
+                                        borderRadius: 3,
+                                        padding: { left: 3, right: 3, top: 1, bottom: 1 },
+                                        formatter: function(value) {
+                                            if (!value || value === 0) return '';
+                                            return Math.round(value) + '%';
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
                                 datalabels: {
-                                    align: 'right',
-                                    anchor: 'center',
-                                    offset: 4,
-                                    color: '#ef4444',
-                                    font: { weight: 'bold', size: 11 },
-                                    backgroundColor: 'rgba(255,255,255,0.9)',
-                                    borderRadius: 3,
-                                    padding: { left: 3, right: 3, top: 1, bottom: 1 },
-                                    formatter: function(value) {
-                                        if (!value || value === 0) return '';
+                                    color: '#fff',
+                                    font: { weight: 'bold' },
+                                    anchor: function(context) {
+                                        return context.dataset.type === 'line' ? 'center' : 'start';
+                                    },
+                                    align: function(context) {
+                                        return context.dataset.type === 'line' ? 'right' : 'end';
+                                    },
+                                    offset: function(context) {
+                                        return context.dataset.type === 'line' ? 4 : 4;
+                                    },
+                                    clamp: true,
+                                    formatter: function(value, context) {
+                                        if (!value || value === 0 || context.dataset.type === 'line') return '';
+                                        if (context.datasetIndex === 1) return Math.round(value) + '%';
                                         return Math.round(value);
                                     }
                                 }
                             },
-                            {
-                                type: 'line',
-                                label: 'Moy. Région (Taux %)',
-                                data: [
-                                    null,
-                                    (avgTel.identifications || 0) * 100,
-                                    (avgTel.reponses_immediates || 0) * 100
-                                ],
-                                borderColor: '#ef4444',
-                                backgroundColor: '#ef4444',
-                                borderWidth: 3,
-                                pointStyle: 'line',
-                                pointRadius: 25,
-                                pointHoverRadius: 25,
-                                showLine: false,
-                                yAxisID: 'y1',
-                                datalabels: {
-                                    align: 'right',
-                                    anchor: 'center',
-                                    offset: 4,
-                                    color: '#ef4444',
-                                    font: { weight: 'bold', size: 11 },
-                                    backgroundColor: 'rgba(255,255,255,0.9)',
-                                    borderRadius: 3,
-                                    padding: { left: 3, right: 3, top: 1, bottom: 1 },
-                                    formatter: function(value) {
-                                        if (!value || value === 0) return '';
-                                        return Math.round(value) + '%';
-                                    }
+                            scales: {
+                                x: { stacked: false, barPercentage: 1.0, categoryPercentage: 1.0 },
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    beginAtZero: true,
+                                    stacked: false
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    min: 0,
+                                    max: 100,
+                                    grid: { drawOnChartArea: false },
+                                    stacked: false
                                 }
-                            }
-                        ]
-                    },
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            datalabels: {
-                                color: '#fff',
-                                font: { weight: 'bold' },
-                                anchor: function(context) {
-                                    return context.dataset.type === 'line' ? 'center' : 'start';
-                                },
-                                align: function(context) {
-                                    return context.dataset.type === 'line' ? 'right' : 'end';
-                                },
-                                offset: function(context) {
-                                    return context.dataset.type === 'line' ? 4 : 4;
-                                },
-                                clamp: true,
-                                formatter: function(value, context) {
-                                    if (!value || value === 0 || context.dataset.type === 'line') return '';
-                                    if (context.datasetIndex === 1) return Math.round(value) + '%';
-                                    return Math.round(value);
-                                }
-                            }
-                        },
-                        scales: {
-                            x: { stacked: false, barPercentage: 1.0, categoryPercentage: 1.0 },
-                            y: {
-                                type: 'linear',
-                                display: true,
-                                position: 'left',
-                                beginAtZero: true,
-                                stacked: false
-                            },
-                            y1: {
-                                type: 'linear',
-                                display: true,
-                                position: 'right',
-                                min: 0,
-                                max: 100,
-                                grid: { drawOnChartArea: false },
-                                stacked: false
                             }
                         }
-                    }
-                });
+                    });
+                }
             }
 
             var canvasTelDmt = getCanvas('agent360-telephone-dmt', containerEl);
             if (canvasTelDmt) {
-                createChart(canvasTelDmt, {
-                    type: 'bar',
-                    data: {
-                        labels: ['DMT', 'DMC', 'DMPA'],
-                        datasets: [
-                            {
-                                label: 'Temps (MM:SS)',
-                                data: [
-                                    parseFloat(telRow.dmt) || 0,
-                                    parseFloat(telRow.dmc) || 0,
-                                    parseFloat(telRow.dmpa) || 0
-                                ],
-                                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                                borderRadius: 4,
-                                order: 1
-                            },
-                            {
-                                type: 'line',
-                                label: 'Moy. Région',
-                                data: [
-                                    avgTel.dmt || 0,
-                                    avgTel.dmc || 0,
-                                    avgTel.dmpa || 0
-                                ],
-                                borderColor: '#ef4444',
-                                backgroundColor: '#ef4444',
-                                borderWidth: 3,
-                                pointStyle: 'line',
-                                pointRadius: 28,
-                                pointHoverRadius: 28,
-                                showLine: false,
-                                clip: false,
-                                order: 0
-                            }
-                        ]
-                    },
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false,
-                        plugins: {
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        var val = context.parsed.y || 0;
-                                        return context.dataset.label + ': ' + formatMmSs(val);
-                                    }
+                var telDmtIsEmpty = isTelephoneEmpty(telRow);
+                clearEmptyState(canvasTelDmt);
+                if (telDmtIsEmpty) {
+                    showEmptyState(canvasTelDmt, 'Aucune donnée', 'Aucun temps de traitement sur la période sélectionnée.');
+                } else {
+                    createChart(canvasTelDmt, {
+                        type: 'bar',
+                        data: {
+                            labels: ['DMT', 'DMC', 'DMPA'],
+                            datasets: [
+                                {
+                                    label: 'Temps (MM:SS)',
+                                    data: [
+                                        parseFloat(telRow.dmt) || 0,
+                                        parseFloat(telRow.dmc) || 0,
+                                        parseFloat(telRow.dmpa) || 0
+                                    ],
+                                    backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
+                                    borderRadius: 4,
+                                    order: 1
+                                },
+                                {
+                                    type: 'line',
+                                    label: 'Moy. Région',
+                                    data: [
+                                        avgTel.dmt || 0,
+                                        avgTel.dmc || 0,
+                                        avgTel.dmpa || 0
+                                    ],
+                                    borderColor: '#ef4444',
+                                    backgroundColor: '#ef4444',
+                                    borderWidth: 3,
+                                    pointStyle: 'line',
+                                    pointRadius: 28,
+                                    pointHoverRadius: 28,
+                                    showLine: false,
+                                    clip: false,
+                                    order: 0
                                 }
-                            },
-                            datalabels: {
-                                font: { weight: 'bold' },
-                                color: function(context) {
-                                    return context.dataset.order === 0 ? '#ef4444' : '#fff';
-                                },
-                                align: function(context) {
-                                    return context.dataset.order === 0 ? 'right' : 'end';
-                                },
-                                anchor: function(context) {
-                                    return context.dataset.order === 0 ? 'center' : 'start';
-                                },
-                                offset: function(context) {
-                                    return context.dataset.order === 0 ? 4 : 4;
-                                },
-                                clamp: true,
-                                backgroundColor: function(context) {
-                                    return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
-                                },
-                                borderRadius: function(context) {
-                                    return context.dataset.order === 0 ? 3 : 0;
-                                },
-                                padding: function(context) {
-                                    return context.dataset.order === 0
-                                        ? { left: 3, right: 3, top: 1, bottom: 1 }
-                                        : 0;
-                                },
-                                font: function(context) {
-                                    return context.dataset.order === 0
-                                        ? { weight: 'bold', size: 11 }
-                                        : { weight: 'bold' };
-                                },
-                                formatter: function(value, context) {
-                                    if (!value || value === 0) return '';
-                                    return formatMmSs(value);
-                                }
-                            },
-                            legend: { display: false }
+                            ]
                         },
-                        scales: {
-                            x: { stacked: false },
-                            y: { 
-                                stacked: false,
-                                beginAtZero: true,
-                                ticks: {
-                                    callback: function(value) {
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false,
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            var val = context.parsed.y || 0;
+                                            return context.dataset.label + ': ' + formatMmSs(val);
+                                        }
+                                    }
+                                },
+                                datalabels: {
+                                    font: { weight: 'bold' },
+                                    color: function(context) {
+                                        return context.dataset.order === 0 ? '#ef4444' : '#fff';
+                                    },
+                                    align: function(context) {
+                                        return context.dataset.order === 0 ? 'right' : 'end';
+                                    },
+                                    anchor: function(context) {
+                                        return context.dataset.order === 0 ? 'center' : 'start';
+                                    },
+                                    offset: function(context) {
+                                        return context.dataset.order === 0 ? 4 : 4;
+                                    },
+                                    clamp: true,
+                                    backgroundColor: function(context) {
+                                        return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
+                                    },
+                                    borderRadius: function(context) {
+                                        return context.dataset.order === 0 ? 3 : 0;
+                                    },
+                                    padding: function(context) {
+                                        return context.dataset.order === 0
+                                            ? { left: 3, right: 3, top: 1, bottom: 1 }
+                                            : 0;
+                                    },
+                                    font: function(context) {
+                                        return context.dataset.order === 0
+                                            ? { weight: 'bold', size: 11 }
+                                            : { weight: 'bold' };
+                                    },
+                                    formatter: function(value, context) {
+                                        if (!value || value === 0) return '';
                                         return formatMmSs(value);
+                                    }
+                                },
+                                legend: { display: false }
+                            },
+                            scales: {
+                                x: { stacked: false },
+                                y: { 
+                                    stacked: false,
+                                    beginAtZero: true,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return formatMmSs(value);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
             }
 
             var badgesEl = containerEl ? containerEl.querySelector('#agent360-tel-badges') : null;
@@ -785,85 +880,91 @@
 
         var canvasCour = getCanvas('agent360-courriels-volumes', containerEl);
         if (canvasCour) {
-            createChart(canvasCour, {
-                type: 'bar',
-                data: {
-                    labels: ['Cl\u00f4ture', 'Envoi Watt', 'R\u00e9p. directe'],
-                    datasets: [
-                        {
-                            label: 'Agent',
-                            data: [
-                                parseFloat(courRow.cloture) || 0,
-                                parseFloat(courRow.envoi_watt) || 0,
-                                parseFloat(courRow.reponse_directe) || 0
-                            ],
-                            backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                            borderRadius: 4,
-                            order: 1
-                        },
-                        {
-                            type: 'line',
-                            label: 'Moy. R\u00e9gion',
-                            data: [avgCour.cloture, avgCour.envoi_watt, avgCour.reponse_directe],
-                            borderColor: '#ef4444',
-                            backgroundColor: '#ef4444',
-                            borderWidth: 3,
-                            pointStyle: 'line',
-                            pointRadius: 28,
-                            pointHoverRadius: 28,
-                            showLine: false,
-                            clip: false,
-                            order: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        datalabels: {
-                            font: function(context) {
-                                return context.dataset.order === 0
-                                    ? { weight: 'bold', size: 11 }
-                                    : { weight: 'bold' };
+            var courIsEmpty = isCourrielsEmpty(courRow);
+            clearEmptyState(canvasCour);
+            if (courIsEmpty) {
+                showEmptyState(canvasCour, 'Aucune donnée', 'Aucun courriel traité sur la période sélectionnée.');
+            } else {
+                createChart(canvasCour, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Cl\u00f4ture', 'Envoi Watt', 'R\u00e9p. directe'],
+                        datasets: [
+                            {
+                                label: 'Agent',
+                                data: [
+                                    parseFloat(courRow.cloture) || 0,
+                                    parseFloat(courRow.envoi_watt) || 0,
+                                    parseFloat(courRow.reponse_directe) || 0
+                                ],
+                                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
+                                borderRadius: 4,
+                                order: 1
                             },
-                            color: function(context) {
-                                return context.dataset.order === 0 ? '#ef4444' : '#fff';
-                            },
-                            align: function(context) {
-                                return context.dataset.order === 0 ? 'right' : 'end';
-                            },
-                            anchor: function(context) {
-                                return context.dataset.order === 0 ? 'center' : 'start';
-                            },
-                            offset: function(context) {
-                                return context.dataset.order === 0 ? 4 : 4;
-                            },
-                            clamp: true,
-                            backgroundColor: function(context) {
-                                return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
-                            },
-                            borderRadius: function(context) {
-                                return context.dataset.order === 0 ? 3 : 0;
-                            },
-                            padding: function(context) {
-                                return context.dataset.order === 0
-                                    ? { left: 3, right: 3, top: 1, bottom: 1 }
-                                    : 0;
-                            },
-                            formatter: function(value) {
-                                if (!value || value === 0) return '';
-                                return Math.round(value);
+                            {
+                                type: 'line',
+                                label: 'Moy. R\u00e9gion',
+                                data: [avgCour.cloture, avgCour.envoi_watt, avgCour.reponse_directe],
+                                borderColor: '#ef4444',
+                                backgroundColor: '#ef4444',
+                                borderWidth: 3,
+                                pointStyle: 'line',
+                                pointRadius: 28,
+                                pointHoverRadius: 28,
+                                showLine: false,
+                                clip: false,
+                                order: 0
                             }
-                        }
+                        ]
                     },
-                    scales: {
-                        x: { stacked: false },
-                        y: { stacked: false, beginAtZero: true }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                font: function(context) {
+                                    return context.dataset.order === 0
+                                        ? { weight: 'bold', size: 11 }
+                                        : { weight: 'bold' };
+                                },
+                                color: function(context) {
+                                    return context.dataset.order === 0 ? '#ef4444' : '#fff';
+                                },
+                                align: function(context) {
+                                    return context.dataset.order === 0 ? 'right' : 'end';
+                                },
+                                anchor: function(context) {
+                                    return context.dataset.order === 0 ? 'center' : 'start';
+                                },
+                                offset: function(context) {
+                                    return context.dataset.order === 0 ? 4 : 4;
+                                },
+                                clamp: true,
+                                backgroundColor: function(context) {
+                                    return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
+                                },
+                                borderRadius: function(context) {
+                                    return context.dataset.order === 0 ? 3 : 0;
+                                },
+                                padding: function(context) {
+                                    return context.dataset.order === 0
+                                        ? { left: 3, right: 3, top: 1, bottom: 1 }
+                                        : 0;
+                                },
+                                formatter: function(value) {
+                                    if (!value || value === 0) return '';
+                                    return Math.round(value);
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { stacked: false },
+                            y: { stacked: false, beginAtZero: true }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         var wattRow = data.agentId != null
@@ -886,85 +987,91 @@
         }
         var canvasWatt = getCanvas('agent360-watt', containerEl);
         if (canvasWatt) {
-            createChart(canvasWatt, {
-                type: 'bar',
-                data: {
-                    labels: ['Clôture', 'Reroutage', 'Transfert'],
-                    datasets: [
-                        {
-                            label: 'Agent',
-                            data: [
-                                parseFloat(wattRow.cloture_manuelle) || 0,
-                                parseFloat(wattRow.reroutage_individuel) || 0,
-                                parseFloat(wattRow.transfert_prod) || 0
-                            ],
-                            backgroundColor: ['#f59e0b', '#ef4444', '#ec4899'],
-                            borderRadius: 4,
-                            order: 1
-                        },
-                        {
-                            type: 'line',
-                            label: 'Moy. R\u00e9gion',
-                            data: [avgWatt.cloture_manuelle, avgWatt.reroutage_individuel, avgWatt.transfert_prod],
-                            borderColor: '#ef4444',
-                            backgroundColor: '#ef4444',
-                            borderWidth: 3,
-                            pointStyle: 'line',
-                            pointRadius: 28,
-                            pointHoverRadius: 28,
-                            showLine: false,
-                            clip: false,
-                            order: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        datalabels: {
-                            font: function(context) {
-                                return context.dataset.order === 0
-                                    ? { weight: 'bold', size: 11 }
-                                    : { weight: 'bold' };
+            var wattIsEmpty = isWattEmpty(wattRow);
+            clearEmptyState(canvasWatt);
+            if (wattIsEmpty) {
+                showEmptyState(canvasWatt, 'Aucune donnée', 'Aucune action WATT sur la période sélectionnée.');
+            } else {
+                createChart(canvasWatt, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Clôture', 'Reroutage', 'Transfert'],
+                        datasets: [
+                            {
+                                label: 'Agent',
+                                data: [
+                                    parseFloat(wattRow.cloture_manuelle) || 0,
+                                    parseFloat(wattRow.reroutage_individuel) || 0,
+                                    parseFloat(wattRow.transfert_prod) || 0
+                                ],
+                                backgroundColor: ['#f59e0b', '#ef4444', '#ec4899'],
+                                borderRadius: 4,
+                                order: 1
                             },
-                            color: function(context) {
-                                return context.dataset.order === 0 ? '#ef4444' : '#fff';
-                            },
-                            align: function(context) {
-                                return context.dataset.order === 0 ? 'right' : 'end';
-                            },
-                            anchor: function(context) {
-                                return context.dataset.order === 0 ? 'center' : 'start';
-                            },
-                            offset: function(context) {
-                                return context.dataset.order === 0 ? 4 : 4;
-                            },
-                            clamp: true,
-                            backgroundColor: function(context) {
-                                return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
-                            },
-                            borderRadius: function(context) {
-                                return context.dataset.order === 0 ? 3 : 0;
-                            },
-                            padding: function(context) {
-                                return context.dataset.order === 0
-                                    ? { left: 3, right: 3, top: 1, bottom: 1 }
-                                    : 0;
-                            },
-                            formatter: function(value, ctx) {
-                                if (value === 0 && ctx.dataset.order === 1) return '';
-                                return Number.isInteger(value) ? value : value.toFixed(1);
+                            {
+                                type: 'line',
+                                label: 'Moy. R\u00e9gion',
+                                data: [avgWatt.cloture_manuelle, avgWatt.reroutage_individuel, avgWatt.transfert_prod],
+                                borderColor: '#ef4444',
+                                backgroundColor: '#ef4444',
+                                borderWidth: 3,
+                                pointStyle: 'line',
+                                pointRadius: 28,
+                                pointHoverRadius: 28,
+                                showLine: false,
+                                clip: false,
+                                order: 0
                             }
-                        }
+                        ]
                     },
-                    scales: {
-                        x: { stacked: false },
-                        y: { stacked: false, beginAtZero: true }
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            datalabels: {
+                                font: function(context) {
+                                    return context.dataset.order === 0
+                                        ? { weight: 'bold', size: 11 }
+                                        : { weight: 'bold' };
+                                },
+                                color: function(context) {
+                                    return context.dataset.order === 0 ? '#ef4444' : '#fff';
+                                },
+                                align: function(context) {
+                                    return context.dataset.order === 0 ? 'right' : 'end';
+                                },
+                                anchor: function(context) {
+                                    return context.dataset.order === 0 ? 'center' : 'start';
+                                },
+                                offset: function(context) {
+                                    return context.dataset.order === 0 ? 4 : 4;
+                                },
+                                clamp: true,
+                                backgroundColor: function(context) {
+                                    return context.dataset.order === 0 ? 'rgba(255,255,255,0.9)' : null;
+                                },
+                                borderRadius: function(context) {
+                                    return context.dataset.order === 0 ? 3 : 0;
+                                },
+                                padding: function(context) {
+                                    return context.dataset.order === 0
+                                        ? { left: 3, right: 3, top: 1, bottom: 1 }
+                                        : 0;
+                                },
+                                formatter: function(value, ctx) {
+                                    if (value === 0 && ctx.dataset.order === 1) return '';
+                                    return Number.isInteger(value) ? value : value.toFixed(1);
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { stacked: false },
+                            y: { stacked: false, beginAtZero: true }
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
         // ---- Tableau Watt détail par circuit (ciblage relatif ; fail-safe + défensif) ----
