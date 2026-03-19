@@ -270,7 +270,7 @@
                                 return assignToManager ? null : supervisors.find(s => parseInt(s.id) === parseInt(supId)); 
                             },
                             get evaluatorName() {
-                                return assignToManager ? getManagerName(supId) : (sup?.nom || 'Inconnu');
+                                return assignToManager ? getManagerName(supId) : (this.sup?.nom || 'Inconnu');
                             }
                          }"
                          class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden w-full"
