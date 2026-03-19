@@ -1020,7 +1020,19 @@
                 var aggregated = { agents: {} };
 
                 var promises = planningFiles.map(function (f) {
-                    return fsManager.readFileText(dataStatsDir, f.name).then(function (text) {
+                    return dataStatsDir.getFileHandle(f.name).then(function (fileHandle) {
+                        return fileHandle.getFile();
+                    }).then(function (file) {
+                        var bufferPromise = (file && typeof file.arrayBuffer === 'function')
+                            ? file.arrayBuffer()
+                            : Promise.resolve(new ArrayBuffer(0));
+                        return bufferPromise;
+                    }).then(function (buffer) {
+                        var text = new TextDecoder('utf-8').decode(buffer);
+                        if (text.indexOf('\uFFFD') !== -1) {
+                            console.warn('[Planning] Fichier ANSI détecté. Bascule sur le décodeur windows-1252.');
+                            text = new TextDecoder('windows-1252').decode(buffer);
+                        }
                         console.log('[Planning][StatsRepository] Lecture OK fichier :', f.name, 'taille:', text && text.length);
                         var parsed = planningSvc.parseCSV(text) || { agents: {} };
                         var agents = parsed.agents || {};
