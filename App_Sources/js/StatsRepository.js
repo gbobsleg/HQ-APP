@@ -108,14 +108,15 @@
         { production: 'Reponse directe', internal: 'reponse_directe' }
     ];
 
-    // Structure réelle watt_YYYY-MM.csv : A=Acteur Niveau 1, B=Circuit Niveau 2, C=Sorties, D=Clôture manuelle, E=Reroutage individuel.
-    // Ligne 2 ignorée. Seules les lignes récap (Circuit vide, ex. "NORMAND Carine;;102;68;4") sont utilisées ; le détail par circuit est ignoré.
+    // Nouveau format watt_YYYY-MM.csv (pré-calculé et journalier).
     var COLUMN_MAPPING_WATT = [
-        { production: 'Acteur Niveau 1', internal: 'agentName' },
-        { production: 'Circuit Niveau 2', internal: 'circuit' },
-        { production: 'Sorties', internal: 'sorties' },
-        { production: 'Clôture manuelle', internal: 'cloture_manuelle' },
-        { production: 'Reroutage individuel', internal: 'reroutage_individuel' }
+        { production: 'date jour-1', internal: 'date' },
+        { production: "Identifiant ANAIS de l'acteur", internal: 'anaisId' },
+        { production: "Nom prénom de l'acteur", internal: 'agentName' },
+        { production: 'Code - libellé du circuit', internal: 'circuit' },
+        { production: 'Nb affaires cloturees', internal: 'cloture_manuelle' },
+        { production: 'Nb affaires reroutées', internal: 'reroutage_individuel' },
+        { production: 'Nb aff transférées à la prod', internal: 'transfert_prod' }
     ];
 
     var PRODUCTION_COLUMN_MAPPINGS = {
@@ -214,7 +215,7 @@
             if (internalKey === 'date') {
                 // Application de l'Early Normalization
                 dto[internalKey] = normalizeDateToISO(val != null ? String(val).trim() : '');
-            } else if (internalKey === 'matricule' || internalKey === 'agentName' || internalKey === 'offre' || internalKey === 'circuit') {
+            } else if (internalKey === 'matricule' || internalKey === 'agentName' || internalKey === 'offre' || internalKey === 'circuit' || internalKey === 'anaisId') {
                 dto[internalKey] = val != null ? String(val).trim() : '';
             } else {
                 dto[internalKey] = safeParseNumber(val);
@@ -375,25 +376,24 @@
                 g.reponse_directe += safeParseNumber(rows[r].reponse_directe);
             }
         } else if (sourceKey === 'watt') {
-            volumeKey = 'sorties';
             for (r = 0; r < rows.length; r++) {
-                if ((rows[r].circuit != null ? String(rows[r].circuit).trim() : '') !== '') continue;
+                // Ne plus exclure les lignes avec circuit (nouveau format WATT détaillé).
                 agentId = rows[r].agentId;
                 dateStr = (rows[r].date || '').trim() || 'unknown';
-                key = agentId + '|' + dateStr;
+                key = agentId + '_' + dateStr;
                 if (!groupsByAgentDate[key]) {
                     groupsByAgentDate[key] = {
                         agentId: agentId,
                         date: dateStr,
-                        sorties: 0,
                         cloture_manuelle: 0,
-                        reroutage_individuel: 0
+                        reroutage_individuel: 0,
+                        transfert_prod: 0
                     };
                 }
                 g = groupsByAgentDate[key];
-                g.sorties += safeParseNumber(rows[r].sorties);
                 g.cloture_manuelle += safeParseNumber(rows[r].cloture_manuelle);
                 g.reroutage_individuel += safeParseNumber(rows[r].reroutage_individuel);
+                g.transfert_prod += safeParseNumber(rows[r].transfert_prod);
             }
         }
 
@@ -411,7 +411,7 @@
                 } else if (sourceKey === 'courriels') {
                     byAgent[aid] = { agentId: aid, cloture: 0, envoi_watt: 0, reponse_directe: 0 };
                 } else {
-                    byAgent[aid] = { agentId: aid, sorties: 0, cloture_manuelle: 0, reroutage_individuel: 0 };
+                    byAgent[aid] = { agentId: aid, cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
                 }
             }
             var agg = byAgent[aid];
@@ -434,9 +434,9 @@
                 agg.envoi_watt      += grp.envoi_watt;
                 agg.reponse_directe += grp.reponse_directe;
             } else {
-                agg.sorties += grp.sorties;
                 agg.cloture_manuelle += grp.cloture_manuelle;
                 agg.reroutage_individuel += grp.reroutage_individuel;
+                agg.transfert_prod += grp.transfert_prod;
             }
         }
         
@@ -522,13 +522,11 @@
                     reponse_directe:  aggItem.reponse_directe
                 });
             } else {
-                var sorties = aggItem.sorties || 0;
-                var rerout = aggItem.reroutage_individuel || 0;
                 out.push({
                     agentId: aggItem.agentId,
                     cloture_manuelle: aggItem.cloture_manuelle || 0,
-                    reroutage_individuel: rerout,
-                    transfert_prod: sorties - rerout
+                    reroutage_individuel: aggItem.reroutage_individuel || 0,
+                    transfert_prod: aggItem.transfert_prod || 0
                 });
             }
         }
@@ -579,7 +577,12 @@
             if (sourceKey === 'watt') {
                 var acteur = (dto.agentName != null ? String(dto.agentName).trim() : '');
                 if (acteur === '' || acteur === 'Total traité par mes équipes') continue;
-                agentId = resolveAgentIdByName(dto.agentName, agents);
+                // Nouveau format WATT : rapprochement prioritaire par identifiant ANAIS (plus fiable que le nom).
+                // Fallback nom uniquement si l'identifiant est absent ou non résolu.
+                agentId = resolveAgentId(dto.anaisId, agents);
+                if (agentId == null) {
+                    agentId = resolveAgentIdByName(dto.agentName, agents);
+                }
             } else {
                 agentId = resolveAgentId(dto.matricule, agents);
             }
@@ -588,13 +591,18 @@
             // Filtre par plage de dates (comparaison lexicographique sur ISO YYYY-MM-DD)
             // Si rowDate est vide (mapping raté), la ligne passe (pas d'élimination silencieuse)
             var rowDate = (dto.date || '').trim();
+            // WATT journalier : une date valide est obligatoire pour éviter des agrégats "unknown".
+            if (sourceKey === 'watt' && !rowDate) continue;
             if (rowDate) {
                 if (dateFrom && rowDate < dateFrom) continue;
                 if (dateTo   && rowDate > dateTo)   continue;
             }
             dto.agentId = agentId;
             delete dto.matricule;
-            if (sourceKey === 'watt') delete dto.agentName;
+            if (sourceKey === 'watt') {
+                delete dto.agentName;
+                delete dto.anaisId;
+            }
             dtos.push(dto);
         }
         return dtos;
@@ -701,14 +709,12 @@
                     out.wattDetail = rawDtos.watt.filter(function (r) {
                         return (r.circuit != null ? String(r.circuit).trim() : '') !== '';
                     }).map(function (r) {
-                        var sorties = safeParseNumber(r.sorties);
-                        var rerout = safeParseNumber(r.reroutage_individuel);
                         return {
                             agentId: r.agentId,
                             circuit: String(r.circuit || '').trim(),
                             cloture_manuelle: safeParseNumber(r.cloture_manuelle),
-                            reroutage_individuel: rerout,
-                            transfert_prod: sorties - rerout
+                            reroutage_individuel: safeParseNumber(r.reroutage_individuel),
+                            transfert_prod: safeParseNumber(r.transfert_prod)
                         };
                     });
                     return out;
