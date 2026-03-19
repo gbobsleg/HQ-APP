@@ -1186,6 +1186,27 @@ function app() {
                                 this.lastPersistedGridJson = JSON.stringify(secsInit.map(sec => { const { collapsed, ...rest } = sec; return rest; }));
                             }
 
+                            // Écoute des changements d'onglets pour auto-rafraîchissement
+                            var self = this;
+                            this.$watch(
+                                function() {
+                                    var s = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+                                    return s ? s.activeTab : null;
+                                },
+                                function(newTab) {
+                                    var s = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+                                    if (!s) return;
+
+                                    if (newTab === 'production' && self.rootHandle && self.allAgents && self.managers && window.refreshProdFromStore) {
+                                        window.refreshProdFromStore(self.rootHandle, self.allAgents, self.managers);
+                                    }
+
+                                    if (newTab === 'agent360' && self.rootHandle && self.campagnesHandle && s.selectedAgent360 && window.refresh360FromStore) {
+                                        window.refresh360FromStore(s.selectedAgent360, self.rootHandle, self.campagnesHandle, self.allAgents);
+                                    }
+                                }
+                            );
+
                             // Si contexte Saisie "Dossier Agent"
                             if (this.pendingParams.agent && this.pendingParams.campagne) {
                                 await this.loadAgentDossier(this.pendingParams.agent, this.pendingParams.campagne);

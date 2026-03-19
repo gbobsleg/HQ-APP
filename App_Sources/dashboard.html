@@ -439,17 +439,6 @@
                         <option value="manager">Équipe (Manager)</option>
                     </select>
                 </div>
-                <div class="w-full">
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Offre</label>
-                    <select x-model="$store.dashboard.prodSelectedOffer"
-                        @change="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
-                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
-                        <option value="">Toutes les offres</option>
-                        <template x-for="offer in ($store.dashboard.prodAvailableOffers || [])" :key="offer">
-                            <option :value="offer" x-text="offer"></option>
-                        </template>
-                    </select>
-                </div>
                 <template x-if="$store.dashboard.prodPerimeter === 'manager'">
                     <div class="w-full">
                         <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Manager</label>
@@ -674,6 +663,25 @@
             <!-- Onglet Production & Équipes -->
             <div x-show="$store.dashboard.activeTab === 'production'" class="max-w-7xl mx-auto space-y-6">
                 <div id="production-charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                    <!-- Barre de filtres par offre : cohérente avec Agent 360° -->
+                    <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
+                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button type="button"
+                                @click="$store.dashboard.prodSelectedOffer = ''; refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                                :class="$store.dashboard.prodSelectedOffer === '' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                                class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors">
+                                Global
+                            </button>
+                            <template x-for="offer in ($store.dashboard.prodAvailableOffers || [])" :key="offer">
+                                <button type="button"
+                                    @click="$store.dashboard.prodSelectedOffer = offer; refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                                    :class="$store.dashboard.prodSelectedOffer === offer ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                                    class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors"
+                                    x-text="offer"></button>
+                            </template>
+                        </div>
+                    </div>
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Temps (s)</h3>
                         <div class="flex-1 relative min-h-0">
