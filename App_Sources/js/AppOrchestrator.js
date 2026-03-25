@@ -754,6 +754,39 @@ function app() {
             return m[3] + '/' + m[2] + '/' + m[1];
         },
 
+        formatSecondsToMMSS(value) {
+            const n = Number(value);
+            const total = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+            const minutes = Math.floor(total / 60);
+            const seconds = total % 60;
+            return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        },
+
+        formatPercentInt(value) {
+            const n = Number(value);
+            const v = Number.isFinite(n) ? Math.round(n) : 0;
+            return String(v) + '%';
+        },
+
+        formatDeltaPercent(agentValue, benchmarkValue) {
+            const a = Number(agentValue);
+            const b = Number(benchmarkValue);
+            if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return '(0%)';
+            const pct = Math.round(((a - b) / b) * 100);
+            if (pct > 0) return '(+' + pct + '%)';
+            return '(' + pct + '%)';
+        },
+
+        getDeltaClass(agentValue, benchmarkValue, lowerIsBetter) {
+            const a = Number(agentValue);
+            const b = Number(benchmarkValue);
+            if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) return 'text-slate-400';
+            const diff = a - b;
+            if (diff === 0) return 'text-slate-400';
+            if (lowerIsBetter) return diff < 0 ? 'text-emerald-600' : 'text-rose-600';
+            return diff > 0 ? 'text-emerald-600' : 'text-rose-600';
+        },
+
         getAgentDisplayName(agent) {
             return agent && agent['pr\u00e9nom'] && agent.nom ? `${agent.nom.toUpperCase()} ${agent['pr\u00e9nom']}` : '';
         },
@@ -1546,7 +1579,7 @@ function app() {
             if (this.isImportingStats) return;
 
             const repo = window.HQApp && window.HQApp.StatsRepository;
-            if (!repo || typeof repo.loadProductionStats !== 'function') {
+            if (!repo || typeof repo.loadProductionStats !== 'function' || typeof repo.aggregatePerimeterStats !== 'function') {
                 this.notify("Module StatsRepository indisponible.", "error");
                 return;
             }
@@ -1591,6 +1624,12 @@ function app() {
                     dateFrom: evalStart,
                     dateTo: evalEnd
                 });
+                const productionPerimeter = await repo.loadProductionStats(this.rootHandle, {
+                    agents: agentsRef,
+                    dateFrom: evalStart,
+                    dateTo: evalEnd
+                });
+                const perimeterDto = repo.aggregatePerimeterStats(productionPerimeter || {}, null);
 
                 const findByAgent = (arr) => Array.isArray(arr)
                     ? (arr.find(r => Number(r.agentId) === Number(agentId)) || null)
@@ -1656,6 +1695,25 @@ function app() {
                         hidden: false
                     }))
                     : [];
+                const perimeterTelGlobal = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.telephone))
+                    ? (perimeterDto.production.telephone[0] || null)
+                    : null;
+                const benchmarkTelGlobal = mapTelGlobal(perimeterTelGlobal);
+                const benchmarkTelByOffer = (perimeterTelGlobal && Array.isArray(perimeterTelGlobal.offres))
+                    ? perimeterTelGlobal.offres.map(o => ({
+                        offre: o && o.offre != null ? String(o.offre) : 'GLOBAL',
+                        appels_traites: toInt(o.appels_traites),
+                        dmt: toInt(o.dmt),
+                        dmc: toInt(o.dmc),
+                        dmmg: toInt(o.dmmg),
+                        dmpa: toInt(o.dmpa),
+                        identifications: toPercentInt(o.identifications),
+                        reponses_immediates: toPercentInt(o.reponses_immediates),
+                        transferts: toInt(o.transferts),
+                        consultations: toInt(o.consultations),
+                        rona: toInt(o.rona)
+                    }))
+                    : [];
 
                 const zeroCour = { cloture: 0, envoi_watt: 0, reponse_directe: 0 };
                 const mapCourGlobal = (row) => {
@@ -1667,6 +1725,10 @@ function app() {
                     };
                 };
                 const courGlobal = mapCourGlobal(mailRow);
+                const perimeterCourGlobal = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.courriels))
+                    ? (perimeterDto.production.courriels[0] || null)
+                    : null;
+                const benchmarkCourGlobal = mapCourGlobal(perimeterCourGlobal);
 
                 const zeroWatt = { cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
                 const mapWattGlobal = (row) => {
@@ -1678,6 +1740,10 @@ function app() {
                     };
                 };
                 const wattGlobal = mapWattGlobal(wattRow);
+                const perimeterWattGlobal = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.watt))
+                    ? (perimeterDto.production.watt[0] || null)
+                    : null;
+                const benchmarkWattGlobal = mapWattGlobal(perimeterWattGlobal);
 
                 // Agrégation wattDetail par circuit sur la période (loadProductionStats renvoie wattDetail en "brut date+circuit")
                 const circuitAgg = {};
@@ -1703,9 +1769,31 @@ function app() {
                         hidden: false
                     };
                 });
+                const perimeterCircuitAgg = {};
+                if (channels.watt && perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.wattDetail)) {
+                    for (let i = 0; i < perimeterDto.production.wattDetail.length; i++) {
+                        const r = perimeterDto.production.wattDetail[i];
+                        if (!r) continue;
+                        const circuit = (r.circuit != null ? String(r.circuit).trim() : '');
+                        if (!circuit) continue;
+                        if (!perimeterCircuitAgg[circuit]) perimeterCircuitAgg[circuit] = { circuit: circuit, cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
+                        perimeterCircuitAgg[circuit].cloture_manuelle += toNumber(r.cloture_manuelle);
+                        perimeterCircuitAgg[circuit].reroutage_individuel += toNumber(r.reroutage_individuel);
+                        perimeterCircuitAgg[circuit].transfert_prod += toNumber(r.transfert_prod);
+                    }
+                }
+                const benchmarkWattByCircuit = Object.keys(perimeterCircuitAgg).map(k => {
+                    const row = perimeterCircuitAgg[k];
+                    return {
+                        circuit: row.circuit,
+                        cloture_manuelle: toInt(row.cloture_manuelle),
+                        reroutage_individuel: toInt(row.reroutage_individuel),
+                        transfert_prod: toInt(row.transfert_prod)
+                    };
+                });
 
                 this.form.stats_snapshot = {
-                    version: 2,
+                    version: 3,
                     imported_at: new Date().toISOString(),
                     period: {
                         eval_start: evalStart,
@@ -1732,6 +1820,20 @@ function app() {
                             hidden: !channels.watt,
                             global: wattGlobal,
                             by_circuit: wattByCircuit
+                        }
+                    },
+                    benchmark: {
+                        scope: 'perimeter_eval_period',
+                        telephone: {
+                            global: benchmarkTelGlobal,
+                            by_offer: benchmarkTelByOffer
+                        },
+                        courriels: {
+                            global: benchmarkCourGlobal
+                        },
+                        watt: {
+                            global: benchmarkWattGlobal,
+                            by_circuit: benchmarkWattByCircuit
                         }
                     }
                 };
@@ -1776,120 +1878,6 @@ function app() {
                 this.form = data;
                 if (!Object.prototype.hasOwnProperty.call(this.form, 'stats_snapshot')) this.form.stats_snapshot = null;
                 if (typeof this.form.stats_analysis_comment !== 'string') this.form.stats_analysis_comment = '';
-
-                // Normalisation rétrocompatible : stats_snapshot V1 (mono-ligne) -> V2 (global + by_offer/by_circuit).
-                if (this.form.stats_snapshot && this.form.stats_snapshot.metrics) {
-                    const snap = this.form.stats_snapshot;
-                    const metrics = snap.metrics || {};
-                    const hasV2Shape = metrics.telephone && metrics.telephone.global && Array.isArray(metrics.telephone.by_offer);
-                    const asPercentIntLegacy = (v) => {
-                        const n = parseFloat(v);
-                        if (!Number.isFinite(n)) return 0;
-                        const pct = Math.abs(n) <= 1 ? (n * 100) : n;
-                        return Math.round(pct);
-                    };
-                    if (snap.version !== 2 || !hasV2Shape) {
-                        const channels = snap.channels || { phone: true, email: true, watt: true };
-
-                        const oldTel = metrics.telephone || null;
-                        const oldCour = metrics.courriels || null;
-                        const oldWatt = metrics.watt || null;
-
-                        const zeroTel = {
-                            appels_traites: 0, dmt: 0, dmc: 0, dmmg: 0, dmpa: 0,
-                            identifications: 0, reponses_immediates: 0, transferts: 0, consultations: 0, rona: 0
-                        };
-                        const telGlobal = oldTel && typeof oldTel === 'object' ? {
-                            appels_traites: oldTel.appels_traites ?? 0,
-                            dmt: oldTel.dmt ?? 0,
-                            dmc: oldTel.dmc ?? 0,
-                            dmmg: oldTel.dmmg ?? 0,
-                            dmpa: oldTel.dmpa ?? 0,
-                            identifications: asPercentIntLegacy(oldTel.identifications ?? 0),
-                            reponses_immediates: asPercentIntLegacy(oldTel.reponses_immediates ?? 0),
-                            transferts: oldTel.transferts ?? 0,
-                            consultations: oldTel.consultations ?? 0,
-                            rona: oldTel.rona ?? 0
-                        } : Object.assign({}, zeroTel);
-
-                        const zeroCour = { cloture: 0, envoi_watt: 0, reponse_directe: 0 };
-                        const courGlobal = oldCour && typeof oldCour === 'object' ? {
-                            cloture: oldCour.cloture ?? 0,
-                            envoi_watt: oldCour.envoi_watt ?? 0,
-                            reponse_directe: oldCour.reponse_directe ?? 0
-                        } : Object.assign({}, zeroCour);
-
-                        const zeroWatt = { cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
-                        const wattGlobal = oldWatt && typeof oldWatt === 'object' ? {
-                            cloture_manuelle: oldWatt.cloture_manuelle ?? 0,
-                            reroutage_individuel: oldWatt.reroutage_individuel ?? 0,
-                            transfert_prod: oldWatt.transfert_prod ?? 0
-                        } : Object.assign({}, zeroWatt);
-
-                        const telByOffer = (oldTel && typeof oldTel === 'object') ? [{
-                            offre: 'GLOBAL',
-                            appels_traites: telGlobal.appels_traites,
-                            dmt: telGlobal.dmt,
-                            dmc: telGlobal.dmc,
-                            dmmg: telGlobal.dmmg,
-                            dmpa: telGlobal.dmpa,
-                            identifications: telGlobal.identifications,
-                            reponses_immediates: telGlobal.reponses_immediates,
-                            transferts: telGlobal.transferts,
-                            consultations: telGlobal.consultations,
-                            rona: telGlobal.rona,
-                            hidden: false
-                        }] : [];
-
-                        const wattByCircuit = (oldWatt && typeof oldWatt === 'object') ? [{
-                            circuit: 'GLOBAL',
-                            cloture_manuelle: wattGlobal.cloture_manuelle,
-                            reroutage_individuel: wattGlobal.reroutage_individuel,
-                            transfert_prod: wattGlobal.transfert_prod,
-                            hidden: false
-                        }] : [];
-
-                        this.form.stats_snapshot = Object.assign({}, snap, {
-                            version: 2,
-                            metrics: {
-                                telephone: {
-                                    hidden: !channels.phone,
-                                    global: telGlobal,
-                                    by_offer: telByOffer
-                                },
-                                courriels: {
-                                    hidden: !channels.email,
-                                    global: courGlobal
-                                },
-                                watt: {
-                                    hidden: !channels.watt,
-                                    global: wattGlobal,
-                                    by_circuit: wattByCircuit
-                                }
-                            }
-                        });
-                    } else {
-                        // Assurer la présence des flags `hidden` sur V2.
-                        if (metrics.telephone && metrics.telephone.global) {
-                            metrics.telephone.global.identifications = asPercentIntLegacy(metrics.telephone.global.identifications);
-                            metrics.telephone.global.reponses_immediates = asPercentIntLegacy(metrics.telephone.global.reponses_immediates);
-                        }
-                        if (metrics.telephone && Array.isArray(metrics.telephone.by_offer)) {
-                            metrics.telephone.by_offer.forEach(r => {
-                                if (!r || typeof r !== 'object') return;
-                                if (typeof r.hidden !== 'boolean') r.hidden = false;
-                                r.identifications = asPercentIntLegacy(r.identifications);
-                                r.reponses_immediates = asPercentIntLegacy(r.reponses_immediates);
-                            });
-                        }
-                        if (metrics.watt && Array.isArray(metrics.watt.by_circuit)) {
-                            metrics.watt.by_circuit.forEach(r => { if (!r || typeof r !== 'object') return; if (typeof r.hidden !== 'boolean') r.hidden = false; });
-                        }
-                        if (metrics.telephone && typeof metrics.telephone.hidden !== 'boolean') metrics.telephone.hidden = false;
-                        if (metrics.courriels && typeof metrics.courriels.hidden !== 'boolean') metrics.courriels.hidden = false;
-                        if (metrics.watt && typeof metrics.watt.hidden !== 'boolean') metrics.watt.hidden = false;
-                    }
-                }
 
                 this.isImportingStats = false;
                 if (this.evaluationEngine && this.evaluationEngine.computeNote) this.form.note = this.evaluationEngine.computeNote(this.form, { sections: this.grid });
@@ -2828,6 +2816,11 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             evolutionBlock.push("EVOLUTION (vs période comparaison)");
             const benchmarkBlock = [];
             benchmarkBlock.push("MOYENNE DU PERIMETRE (vs période évaluée)");
+            const phoneOfferHeader = (offerName) => {
+                const name = String(offerName || '').trim();
+                if (name.toUpperCase() === 'GLOBAL') return "- PERFORMANCE GLOBALE (Toutes offres confondues) :";
+                return "- Détail de l'offre " + name + " :";
+            };
 
             if (visibleChannels.phone) {
                 const telEval = snap.metrics.telephone || {};
@@ -2842,7 +2835,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
 
                 performanceBlock.push("Téléphone (offres visibles)");
                 if (telGlobal) {
-                    performanceBlock.push("- Offre GLOBAL : volume évalué=" + (normalizeValue('dmt', telGlobal.appels_traites) ?? 0) + " appels.");
+                    performanceBlock.push(phoneOfferHeader('GLOBAL') + " volume évalué=" + (normalizeValue('dmt', telGlobal.appels_traites) ?? 0) + " appels.");
                     performanceBlock.push("  " + (KPI_META.dmt.label + " : " + (formatValue('dmt', telGlobal.dmt) || 'n/a')) + " | " + (KPI_META.dmc.label + " : " + (formatValue('dmc', telGlobal.dmc) || 'n/a')) + " | " + (KPI_META.dmmg.label + " : " + (formatValue('dmmg', telGlobal.dmmg) || 'n/a')) + " | " + (KPI_META.dmpa.label + " : " + (formatValue('dmpa', telGlobal.dmpa) || 'n/a')) + " | " + (KPI_META.identifications.label + " : " + (formatValue('identifications', telGlobal.identifications) || 'n/a')) + " | " + (KPI_META.reponses_immediates.label + " : " + (formatValue('reponses_immediates', telGlobal.reponses_immediates) || 'n/a')) + " | " + (KPI_META.rona.label + " : " + (formatValue('rona', telGlobal.rona) || 'n/a')));
                     const compareGlobalLines = [
                         semanticLine('dmt', telGlobal.dmt, compareTelAgent && compareTelAgent.dmt, 'N-1 global'),
@@ -2852,7 +2845,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         semanticLine('rona', telGlobal.rona, compareTelAgent && compareTelAgent.rona, 'N-1 global')
                     ].filter(Boolean);
                     if (compareGlobalLines.length > 0) {
-                        evolutionBlock.push("- Offre GLOBAL :");
+                        evolutionBlock.push(phoneOfferHeader('GLOBAL'));
                         compareGlobalLines.forEach(l => evolutionBlock.push("  " + l));
                     }
                     const benchmarkGlobalLines = [
@@ -2862,7 +2855,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         semanticLine('reponses_immediates', telGlobal.reponses_immediates, perimeterTel && perimeterTel.reponses_immediates, 'moyenne périmètre globale')
                     ].filter(Boolean);
                     if (benchmarkGlobalLines.length > 0) {
-                        benchmarkBlock.push("- Offre GLOBAL :");
+                        benchmarkBlock.push(phoneOfferHeader('GLOBAL'));
                         benchmarkGlobalLines.forEach(l => benchmarkBlock.push("  " + l));
                     }
                 }
@@ -2874,7 +2867,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         const offerName = (e.offre || 'GLOBAL');
                         const c = findOffer(compareOffers, offerName);
                         const p = findOffer(perimeterOffers, offerName);
-                        performanceBlock.push("- Offre " + offerName + " : volume évalué=" + (normalizeValue('dmt', e.appels_traites) ?? 0) + " appels.");
+                        performanceBlock.push(phoneOfferHeader(offerName) + " volume évalué=" + (normalizeValue('dmt', e.appels_traites) ?? 0) + " appels.");
                         performanceBlock.push("  " + (KPI_META.dmt.label + " : " + (formatValue('dmt', e.dmt) || 'n/a')) + " | " + (KPI_META.dmc.label + " : " + (formatValue('dmc', e.dmc) || 'n/a')) + " | " + (KPI_META.dmmg.label + " : " + (formatValue('dmmg', e.dmmg) || 'n/a')) + " | " + (KPI_META.dmpa.label + " : " + (formatValue('dmpa', e.dmpa) || 'n/a')) + " | " + (KPI_META.identifications.label + " : " + (formatValue('identifications', e.identifications) || 'n/a')) + " | " + (KPI_META.reponses_immediates.label + " : " + (formatValue('reponses_immediates', e.reponses_immediates) || 'n/a')) + " | " + (KPI_META.rona.label + " : " + (formatValue('rona', e.rona) || 'n/a')));
 
                         const compareLines = [
@@ -2885,10 +2878,10 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                             semanticLine('rona', e.rona, c && c.rona, 'N-1')
                         ].filter(Boolean);
                         if (compareLines.length > 0) {
-                            evolutionBlock.push("- Offre " + offerName + " :");
+                            evolutionBlock.push(phoneOfferHeader(offerName));
                             compareLines.forEach(l => evolutionBlock.push("  " + l));
                         } else {
-                            evolutionBlock.push("- Offre " + offerName + " : comparaison indisponible.");
+                            evolutionBlock.push(phoneOfferHeader(offerName) + " comparaison indisponible.");
                         }
 
                         const benchmarkLines = [
@@ -2898,10 +2891,10 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                             semanticLine('reponses_immediates', e.reponses_immediates, p && p.reponses_immediates, 'périmètre')
                         ].filter(Boolean);
                         if (benchmarkLines.length > 0) {
-                            benchmarkBlock.push("- Offre " + offerName + " :");
+                            benchmarkBlock.push(phoneOfferHeader(offerName));
                             benchmarkLines.forEach(l => benchmarkBlock.push("  " + l));
                         } else {
-                            benchmarkBlock.push("- Offre " + offerName + " : moyenne du périmètre indisponible.");
+                            benchmarkBlock.push(phoneOfferHeader(offerName) + " moyenne du périmètre indisponible.");
                         }
                     }
                 }

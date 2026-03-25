@@ -84,7 +84,7 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
-        const margin = 20;
+        const margin = 16;
 
         const agentName = options.agentName || '';
         const campaignName = options.campaignName || 'Campagne en cours';
@@ -262,7 +262,7 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
-        const margin = 20;
+        const margin = 16;
         const contentWidth = pageWidth - (2 * margin);
         const cursor = { y: margin };
         const helpers = createPageHelpers(doc, margin);
@@ -282,6 +282,27 @@
             const n = typeof v === 'number' ? v : parseFloat(v);
             if (!Number.isFinite(n)) return (decimals === 0 ? '0' : (0).toFixed(decimals));
             return decimals === 0 ? String(Math.round(n)) : n.toFixed(decimals);
+        }
+
+        function fmtSecondsToMMSS(v) {
+            const n = typeof v === 'number' ? v : parseFloat(v);
+            const total = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+            const m = Math.floor(total / 60);
+            const s = total % 60;
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+
+        function fmtPercent(v) {
+            return fmtNum(v, 0) + '%';
+        }
+
+        function fmtDeltaPercent(agentVal, avgVal) {
+            var a = parseFloat(agentVal) || 0;
+            var b = parseFloat(avgVal) || 0;
+            if (!b) return '(0%)';
+            var pct = Math.round(((a - b) / b) * 100);
+            if (pct > 0) return '(+' + pct + '%)';
+            return '(' + pct + '%)';
         }
 
         const agentName = options.agentName || '';
@@ -398,6 +419,7 @@
             var statsSnap = fc.stats_snapshot || null;
             if (statsSnap && statsSnap.metrics) {
                 var metrics = statsSnap.metrics || {};
+                var benchmark = statsSnap.benchmark;
                 var period = statsSnap.period || {};
                 var anyStatsRendered = false;
 
@@ -424,23 +446,52 @@
                     if (Array.isArray(telMetric.by_offer)) {
                         telRows = telMetric.by_offer.filter(function (r) { return r && r.hidden !== true; });
                     } else {
-                        telRows = telMetric ? [Object.assign({ offre: 'GLOBAL', hidden: false }, telMetric)] : [];
+                        telRows = [];
                     }
 
-                    // Ajouter une ligne GLOBAL si le snapshot V2 ne la contient pas déjà (même si tous les détails sont masqués ou absents).
-                    if (telMetric.global) {
-                        var hasGlobalRow = telRows.some(function (r) { return r && String(r.offre || '').toUpperCase() === 'GLOBAL'; });
-                        if (!hasGlobalRow) {
-                            telRows.unshift(Object.assign({ offre: 'GLOBAL', hidden: false }, telMetric.global));
-                        }
-                    }
+                    // Retirer GLOBAL du détail : la ligne sera affichée en total de bas de tableau.
+                    telRows = telRows.filter(function (r) { return String((r && r.offre) || '').toUpperCase() !== 'GLOBAL'; });
+                    var telGlobalRow = telMetric.global
+                        ? Object.assign({ offre: 'GLOBAL', hidden: false }, telMetric.global)
+                        : null;
+                    var benchmarkTelByOffer = benchmark.telephone.by_offer || [];
+                    var benchmarkTelGlobal = benchmark.telephone.global;
 
-                    if (telRows.length === 0) {
+                    if (telRows.length === 0 && !telGlobalRow) {
                         ensurePageSpace(cursor, 6);
                         doc.setFont(undefined, 'italic');
                         doc.text("Aucune offre incluse.", margin, cursor.y);
                         cursor.y += 6;
                     } else {
+                        var telBody = telRows.map(function (r) {
+                            var avg = benchmarkTelByOffer.find(function (b) { return b && b.offre === r.offre; }) || {};
+                            return [
+                                r.offre || '—',
+                                r.appels_traites || 0,
+                                fmtSecondsToMMSS(r.dmt) + ' ' + fmtDeltaPercent(r.dmt, avg.dmt),
+                                fmtSecondsToMMSS(r.dmc) + ' ' + fmtDeltaPercent(r.dmc, avg.dmc),
+                                fmtSecondsToMMSS(r.dmmg) + ' ' + fmtDeltaPercent(r.dmmg, avg.dmmg),
+                                fmtSecondsToMMSS(r.dmpa) + ' ' + fmtDeltaPercent(r.dmpa, avg.dmpa),
+                                fmtPercent(r.identifications) + ' ' + fmtDeltaPercent(r.identifications, avg.identifications),
+                                fmtPercent(r.reponses_immediates) + ' ' + fmtDeltaPercent(r.reponses_immediates, avg.reponses_immediates),
+                                r.transferts || 0,
+                                r.consultations || 0,
+                                fmtNum(r.rona, 0)
+                            ];
+                        });
+                        var telFoot = telGlobalRow ? [[
+                            'GLOBAL',
+                            telGlobalRow.appels_traites || 0,
+                            fmtSecondsToMMSS(telGlobalRow.dmt) + ' ' + fmtDeltaPercent(telGlobalRow.dmt, benchmarkTelGlobal.dmt),
+                            fmtSecondsToMMSS(telGlobalRow.dmc) + ' ' + fmtDeltaPercent(telGlobalRow.dmc, benchmarkTelGlobal.dmc),
+                            fmtSecondsToMMSS(telGlobalRow.dmmg) + ' ' + fmtDeltaPercent(telGlobalRow.dmmg, benchmarkTelGlobal.dmmg),
+                            fmtSecondsToMMSS(telGlobalRow.dmpa) + ' ' + fmtDeltaPercent(telGlobalRow.dmpa, benchmarkTelGlobal.dmpa),
+                            fmtPercent(telGlobalRow.identifications) + ' ' + fmtDeltaPercent(telGlobalRow.identifications, benchmarkTelGlobal.identifications),
+                            fmtPercent(telGlobalRow.reponses_immediates) + ' ' + fmtDeltaPercent(telGlobalRow.reponses_immediates, benchmarkTelGlobal.reponses_immediates),
+                            telGlobalRow.transferts || 0,
+                            telGlobalRow.consultations || 0,
+                            fmtNum(telGlobalRow.rona, 0)
+                        ]] : [];
                         doc.autoTable({
                             startY: cursor.y,
                             margin: { left: margin, right: margin },
@@ -458,23 +509,12 @@
                                 "Consultations",
                                 "RONA"
                             ]],
-                            body: telRows.map(function (r) {
-                                return [
-                                    r.offre || 'GLOBAL',
-                                    r.appels_traites || 0,
-                                    fmtNum(r.dmt, 2),
-                                    fmtNum(r.dmc, 2),
-                                    fmtNum(r.dmmg, 2),
-                                    fmtNum(r.dmpa, 2),
-                                    r.identifications || 0,
-                                    r.reponses_immediates || 0,
-                                    r.transferts || 0,
-                                    r.consultations || 0,
-                                    fmtNum(r.rona, 2)
-                                ];
-                            }),
-                            styles: { fontSize: 8, cellPadding: 2, textColor: 30 },
+                            body: telBody,
+                            foot: telFoot,
+                            showFoot: telFoot.length ? 'lastPage' : 'never',
+                            styles: { fontSize: 7, cellPadding: 1.8, textColor: 30 },
                             headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold' },
                             theme: 'grid',
                             rowPageBreak: 'auto',
                             didDrawPage: function () {}
@@ -508,7 +548,7 @@
                         tableWidth: contentWidth,
                         head: [[ "Clôture", "Envoi WATT", "Réponse directe" ]],
                         body: courBody,
-                        styles: { fontSize: 9, cellPadding: 2, textColor: 30 },
+                        styles: { fontSize: 8, cellPadding: 1.8, textColor: 30 },
                         headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
                         theme: 'grid'
                     });
@@ -537,44 +577,45 @@
                     if (Array.isArray(wattMetric.by_circuit)) {
                         wattRows = wattMetric.by_circuit.filter(function (r) { return r && r.hidden !== true; });
                     } else {
-                        wattRows = wattMetric ? [{
-                            circuit: 'GLOBAL',
-                            cloture_manuelle: wattMetric.cloture_manuelle || 0,
-                            reroutage_individuel: wattMetric.reroutage_individuel || 0,
-                            transfert_prod: wattMetric.transfert_prod || 0,
-                            hidden: false
-                        }] : [];
+                        wattRows = [];
                     }
 
-                    // Ajouter une ligne GLOBAL si le snapshot V2 ne la contient pas déjà (même si tous les circuits sont masqués ou absents).
-                    if (wattMetric.global) {
-                        var hasGlobalCircuit = wattRows.some(function (r) { return r && String(r.circuit || '').toUpperCase() === 'GLOBAL'; });
-                        if (!hasGlobalCircuit) {
-                            wattRows.unshift(Object.assign({ circuit: 'GLOBAL', hidden: false }, wattMetric.global));
-                        }
-                    }
-
-                    if (wattRows.length === 0) {
+                    // Retirer GLOBAL du détail : la ligne sera affichée en total de bas de tableau.
+                    wattRows = wattRows.filter(function (r) { return String((r && r.circuit) || '').toUpperCase() !== 'GLOBAL'; });
+                    var wattGlobalRow = wattMetric.global
+                        ? Object.assign({ circuit: 'GLOBAL', hidden: false }, wattMetric.global)
+                        : null;
+                    if (wattRows.length === 0 && !wattGlobalRow) {
                         ensurePageSpace(cursor, 6);
                         doc.setFont(undefined, 'italic');
                         doc.text("Aucune ligne incluse.", margin, cursor.y);
                         cursor.y += 6;
                     } else {
+                        var wattBody = wattRows.map(function (r) {
+                            return [
+                                r.circuit || '—',
+                                fmtNum(r.cloture_manuelle, 0),
+                                fmtNum(r.reroutage_individuel, 0),
+                                fmtNum(r.transfert_prod, 0)
+                            ];
+                        });
+                        var wattFoot = wattGlobalRow ? [[
+                            'GLOBAL',
+                            fmtNum(wattGlobalRow.cloture_manuelle, 0),
+                            fmtNum(wattGlobalRow.reroutage_individuel, 0),
+                            fmtNum(wattGlobalRow.transfert_prod, 0)
+                        ]] : [];
                         doc.autoTable({
                             startY: cursor.y,
                             margin: { left: margin, right: margin },
                             tableWidth: contentWidth,
-                            head: [[ "Circuit", "Clôture manuelle", "Reroutage individuel", "Transfert prod" ]],
-                            body: wattRows.map(function (r) {
-                                return [
-                                    r.circuit || 'GLOBAL',
-                                    fmtNum(r.cloture_manuelle, 0),
-                                    fmtNum(r.reroutage_individuel, 0),
-                                    fmtNum(r.transfert_prod, 0)
-                                ];
-                            }),
-                            styles: { fontSize: 8, cellPadding: 2, textColor: 30 },
+                            head: [[ "Circuit", "Clôture", "Reroutage", "Transfert" ]],
+                            body: wattBody,
+                            foot: wattFoot,
+                            showFoot: wattFoot.length ? 'lastPage' : 'never',
+                            styles: { fontSize: 7, cellPadding: 1.8, textColor: 30 },
                             headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold' },
                             theme: 'grid',
                             rowPageBreak: 'auto',
                             didDrawPage: function () {}
