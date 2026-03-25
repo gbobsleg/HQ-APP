@@ -269,6 +269,21 @@
         const ensurePageSpace = helpers.ensurePageSpace;
         const writeParagraph = helpers.writeParagraph;
 
+        function fmtDate(raw) {
+            if (!raw) return '—';
+            try {
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return raw;
+                return d.toLocaleDateString('fr-FR');
+            } catch (e) { return raw; }
+        }
+
+        function fmtNum(v, decimals = 2) {
+            const n = typeof v === 'number' ? v : parseFloat(v);
+            if (!Number.isFinite(n)) return (decimals === 0 ? '0' : (0).toFixed(decimals));
+            return decimals === 0 ? String(Math.round(n)) : n.toFixed(decimals);
+        }
+
         const agentName = options.agentName || '';
         const campaignName = options.campaignName || 'Campagne en cours';
         const supervisorName = options.supervisorName || '';
@@ -377,6 +392,211 @@
                 }
 
                 cursor.y += 2;
+            }
+
+            // --- Dashboard Stats Manager (review) ---
+            var statsSnap = fc.stats_snapshot || null;
+            if (statsSnap && statsSnap.metrics) {
+                var metrics = statsSnap.metrics || {};
+                var period = statsSnap.period || {};
+                var anyStatsRendered = false;
+
+                // Téléphone
+                var telMetric = metrics.telephone || null;
+                var telHidden = telMetric && telMetric.hidden === true;
+                if (telMetric && !telHidden) {
+                    anyStatsRendered = true;
+                    ensurePageSpace(cursor, 10);
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(55, 65, 81);
+                    doc.text("Statistiques Téléphone (par offre)", margin, cursor.y);
+                    cursor.y += 5;
+
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(30, 41, 59);
+                    doc.setFontSize(9);
+                    doc.text("Période: " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
+                    cursor.y += 4;
+
+                    var telGlobal = telMetric.global ? telMetric.global : telMetric;
+                    var telRows = [];
+                    if (Array.isArray(telMetric.by_offer)) {
+                        telRows = telMetric.by_offer.filter(function (r) { return r && r.hidden !== true; });
+                    } else {
+                        telRows = telMetric ? [Object.assign({ offre: 'GLOBAL', hidden: false }, telMetric)] : [];
+                    }
+
+                    // Ajouter une ligne GLOBAL si le snapshot V2 ne la contient pas déjà (même si tous les détails sont masqués ou absents).
+                    if (telMetric.global) {
+                        var hasGlobalRow = telRows.some(function (r) { return r && String(r.offre || '').toUpperCase() === 'GLOBAL'; });
+                        if (!hasGlobalRow) {
+                            telRows.unshift(Object.assign({ offre: 'GLOBAL', hidden: false }, telMetric.global));
+                        }
+                    }
+
+                    if (telRows.length === 0) {
+                        ensurePageSpace(cursor, 6);
+                        doc.setFont(undefined, 'italic');
+                        doc.text("Aucune offre incluse.", margin, cursor.y);
+                        cursor.y += 6;
+                    } else {
+                        doc.autoTable({
+                            startY: cursor.y,
+                            margin: { left: margin, right: margin },
+                            tableWidth: contentWidth,
+                            head: [[
+                                "Offre",
+                                "Appels",
+                                "DMT",
+                                "DMC",
+                                "DMMG",
+                                "DMPA",
+                                "Identifications",
+                                "Réponses immédiates",
+                                "Transferts",
+                                "Consultations",
+                                "RONA"
+                            ]],
+                            body: telRows.map(function (r) {
+                                return [
+                                    r.offre || 'GLOBAL',
+                                    r.appels_traites || 0,
+                                    fmtNum(r.dmt, 2),
+                                    fmtNum(r.dmc, 2),
+                                    fmtNum(r.dmmg, 2),
+                                    fmtNum(r.dmpa, 2),
+                                    r.identifications || 0,
+                                    r.reponses_immediates || 0,
+                                    r.transferts || 0,
+                                    r.consultations || 0,
+                                    fmtNum(r.rona, 2)
+                                ];
+                            }),
+                            styles: { fontSize: 8, cellPadding: 2, textColor: 30 },
+                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                            theme: 'grid',
+                            rowPageBreak: 'auto',
+                            didDrawPage: function () {}
+                        });
+                        cursor.y = doc.lastAutoTable.finalY + 6;
+                    }
+                }
+
+                // Courriels
+                var courMetric = metrics.courriels || null;
+                var courHidden = courMetric && courMetric.hidden === true;
+                if (courMetric && !courHidden) {
+                    anyStatsRendered = true;
+                    ensurePageSpace(cursor, 8);
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(55, 65, 81);
+                    doc.text("Statistiques Courriels", margin, cursor.y);
+                    cursor.y += 5;
+
+                    var courGlobal = courMetric.global ? courMetric.global : courMetric;
+                    var courBody = [[
+                        fmtNum(courGlobal.cloture, 0),
+                        fmtNum(courGlobal.envoi_watt, 0),
+                        fmtNum(courGlobal.reponse_directe, 0)
+                    ]];
+
+                    doc.autoTable({
+                        startY: cursor.y,
+                        margin: { left: margin, right: margin },
+                        tableWidth: contentWidth,
+                        head: [[ "Clôture", "Envoi WATT", "Réponse directe" ]],
+                        body: courBody,
+                        styles: { fontSize: 9, cellPadding: 2, textColor: 30 },
+                        headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                        theme: 'grid'
+                    });
+                    cursor.y = doc.lastAutoTable.finalY + 6;
+                }
+
+                // WATT
+                var wattMetric = metrics.watt || null;
+                var wattHidden = wattMetric && wattMetric.hidden === true;
+                if (wattMetric && !wattHidden) {
+                    anyStatsRendered = true;
+                    ensurePageSpace(cursor, 10);
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(55, 65, 81);
+                    doc.text("Statistiques WATT (par circuit)", margin, cursor.y);
+                    cursor.y += 5;
+
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(30, 41, 59);
+                    doc.setFontSize(9);
+                    doc.text("Période: " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
+                    cursor.y += 4;
+
+                    var wattRows = [];
+                    if (Array.isArray(wattMetric.by_circuit)) {
+                        wattRows = wattMetric.by_circuit.filter(function (r) { return r && r.hidden !== true; });
+                    } else {
+                        wattRows = wattMetric ? [{
+                            circuit: 'GLOBAL',
+                            cloture_manuelle: wattMetric.cloture_manuelle || 0,
+                            reroutage_individuel: wattMetric.reroutage_individuel || 0,
+                            transfert_prod: wattMetric.transfert_prod || 0,
+                            hidden: false
+                        }] : [];
+                    }
+
+                    // Ajouter une ligne GLOBAL si le snapshot V2 ne la contient pas déjà (même si tous les circuits sont masqués ou absents).
+                    if (wattMetric.global) {
+                        var hasGlobalCircuit = wattRows.some(function (r) { return r && String(r.circuit || '').toUpperCase() === 'GLOBAL'; });
+                        if (!hasGlobalCircuit) {
+                            wattRows.unshift(Object.assign({ circuit: 'GLOBAL', hidden: false }, wattMetric.global));
+                        }
+                    }
+
+                    if (wattRows.length === 0) {
+                        ensurePageSpace(cursor, 6);
+                        doc.setFont(undefined, 'italic');
+                        doc.text("Aucune ligne incluse.", margin, cursor.y);
+                        cursor.y += 6;
+                    } else {
+                        doc.autoTable({
+                            startY: cursor.y,
+                            margin: { left: margin, right: margin },
+                            tableWidth: contentWidth,
+                            head: [[ "Circuit", "Clôture manuelle", "Reroutage individuel", "Transfert prod" ]],
+                            body: wattRows.map(function (r) {
+                                return [
+                                    r.circuit || 'GLOBAL',
+                                    fmtNum(r.cloture_manuelle, 0),
+                                    fmtNum(r.reroutage_individuel, 0),
+                                    fmtNum(r.transfert_prod, 0)
+                                ];
+                            }),
+                            styles: { fontSize: 8, cellPadding: 2, textColor: 30 },
+                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                            theme: 'grid',
+                            rowPageBreak: 'auto',
+                            didDrawPage: function () {}
+                        });
+                        cursor.y = doc.lastAutoTable.finalY + 6;
+                    }
+                }
+
+                // Analyse des statistiques (commentaire manager)
+                ensurePageSpace(cursor, 10);
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(55, 65, 81);
+                doc.text("Analyse des statistiques", margin, cursor.y);
+                cursor.y += 5;
+
+                doc.setFont(undefined, 'normal');
+                doc.setFontSize(10);
+                doc.setTextColor(30, 41, 59);
+                var statsComment = (fc.stats_analysis_comment || '').trim();
+                writeParagraph(cursor, statsComment || 'Non renseigné', contentWidth, 5, 2);
+                cursor.y += 4;
             }
 
             if (globalComment) {

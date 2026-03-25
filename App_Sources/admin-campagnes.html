@@ -17,14 +17,46 @@
     <script src="js/EvaluationEngineFactory.js"></script>
     <script src="js/AnalyticsEngineFactory.js"></script>
     <script src="js/AppOrchestrator.js"></script>
-    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+    <style>
+        [x-cloak] { display: none !important; }
+        html { scrollbar-gutter: stable; }
+        .conflict-badge { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
 </head>
 <body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init()">
     <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
 
-    <div :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 flex h-[calc(100vh-68px)]">
+    <div x-data="{ wizardSidebarOpen: true, prevWizardStep: 1, wizardSidebarTimer: null }"
+         x-init="$watch('campaignWizardStep', (step) => { if (wizardSidebarTimer) { clearTimeout(wizardSidebarTimer); wizardSidebarTimer = null; } if (prevWizardStep !== 3 && step === 3) { wizardSidebarOpen = true; wizardSidebarTimer = setTimeout(() => { wizardSidebarOpen = false; wizardSidebarTimer = null; }, 1000); } else if (step !== 3) { wizardSidebarOpen = true; } prevWizardStep = step; })"
+         :class="isInitializing ? 'opacity-0' : 'opacity-100'"
+         class="relative transition-opacity duration-300 flex h-[calc(100vh-68px)]">
+        <div x-show="(adminShowCreateForm || isEditingCampaign) && campaignWizardStep === 3 && wizardSidebarOpen"
+             x-cloak
+             @click="wizardSidebarOpen = false"
+             class="fixed inset-0 bg-slate-900/30 z-30 xl:hidden"></div>
+        <div x-show="(adminShowCreateForm || isEditingCampaign) && campaignWizardStep === 3 && !wizardSidebarOpen"
+             x-cloak
+             @mouseenter="wizardSidebarOpen = true"
+             class="fixed left-0 top-[68px] h-[calc(100vh-68px)] z-50 w-4 bg-white border-r border-slate-300 hover:border-indigo-400 transition-colors cursor-e-resize"
+             title="Survolez pour afficher la colonne campagnes">
+            <div class="h-full w-full flex items-center justify-center">
+                <span class="text-[10px] font-black text-slate-500">▶</span>
+            </div>
+        </div>
         <!-- SIDEBAR -->
-        <aside class="w-80 bg-white border-r border-slate-200 p-8 overflow-y-auto">
+        <aside x-show="(!adminShowCreateForm && !isEditingCampaign) || campaignWizardStep !== 3 || wizardSidebarOpen"
+               x-cloak
+               x-transition:enter="transition ease-out duration-300"
+               x-transition:enter-start="opacity-0 -translate-x-2"
+               x-transition:enter-end="opacity-100 translate-x-0"
+               x-transition:leave="transition ease-in duration-300"
+               x-transition:leave-start="opacity-100 translate-x-0"
+               x-transition:leave-end="opacity-0 -translate-x-2"
+               @mouseleave="if ((adminShowCreateForm || isEditingCampaign) && campaignWizardStep === 3) wizardSidebarOpen = false"
+               :class="((adminShowCreateForm || isEditingCampaign) && campaignWizardStep === 3)
+                    ? 'fixed left-0 top-[68px] h-[calc(100vh-68px)] z-40 w-80 shadow-2xl'
+                    : 'w-80'"
+               class="bg-white border-r border-slate-200 p-8 overflow-y-auto shrink-0">
             <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Dossiers de Campagne</h3>
             <nav class="space-y-3">
                 <button @click="startNewCampaign()"
@@ -63,7 +95,7 @@
                 <a href="admin.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Hub Admin</a>
                 <h1 class="text-3xl font-black text-indigo-900 mt-2 tracking-tight">Dossiers de Campagne</h1>
                 <p class="text-slate-500 font-medium text-sm" x-show="!adminShowCreateForm && !isEditingCampaign">Structurez vos répertoires d'évaluation par période.</p>
-                <p class="text-slate-600 font-medium text-sm mt-1" x-show="adminShowCreateForm || isEditingCampaign">Étape 1 sur 2 : sélectionnez les agents participants, puis passez à l'étape 2 pour les répartir entre les superviseurs.</p>
+                <p class="text-slate-600 font-medium text-sm mt-1" x-show="adminShowCreateForm || isEditingCampaign" x-text="'Étape ' + campaignWizardStep + ' sur 3 : wizard de configuration de la campagne.'"></p>
             </div>
 
             <!-- Placeholder : rien sélectionné -->
@@ -74,69 +106,174 @@
 
             <!-- Formulaire création / édition -->
             <div x-show="adminShowCreateForm || isEditingCampaign" x-cloak>
-                <!-- Stepper : 2 étapes -->
+                <!-- Stepper : 3 étapes -->
                 <div class="flex items-center gap-4 mb-6">
-                    <div class="flex items-center gap-2">
-                        <span class="w-8 h-8 rounded-full bg-amber-600 text-white font-black text-sm flex items-center justify-center">1</span>
-                        <span class="text-sm font-black text-slate-800">Choix des agents</span>
+                    <div class="flex items-center gap-2" :class="campaignWizardStep >= 1 ? '' : 'opacity-50'">
+                        <span class="w-8 h-8 rounded-full font-black text-sm flex items-center justify-center"
+                              :class="campaignWizardStep >= 1 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'">1</span>
+                        <span class="text-sm" :class="campaignWizardStep === 1 ? 'font-black text-slate-800' : 'font-medium text-slate-500'">Paramétrage</span>
                     </div>
                     <span class="text-slate-300">—</span>
-                    <div class="flex items-center gap-2 opacity-50">
-                        <span class="w-8 h-8 rounded-full bg-slate-200 text-slate-500 font-black text-sm flex items-center justify-center">2</span>
-                        <span class="text-sm font-medium text-slate-500">Répartition</span>
+                    <div class="flex items-center gap-2" :class="campaignWizardStep >= 2 ? '' : 'opacity-50'">
+                        <span class="w-8 h-8 rounded-full font-black text-sm flex items-center justify-center"
+                              :class="campaignWizardStep >= 2 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'">2</span>
+                        <span class="text-sm" :class="campaignWizardStep === 2 ? 'font-black text-slate-800' : 'font-medium text-slate-500'">Agents</span>
+                    </div>
+                    <span class="text-slate-300">—</span>
+                    <div class="flex items-center gap-2" :class="campaignWizardStep >= 3 ? '' : 'opacity-50'">
+                        <span class="w-8 h-8 rounded-full font-black text-sm flex items-center justify-center"
+                              :class="campaignWizardStep >= 3 ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-500'">3</span>
+                        <span class="text-sm" :class="campaignWizardStep === 3 ? 'font-black text-slate-800' : 'font-medium text-slate-500'">Répartition</span>
                     </div>
                 </div>
                 <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
-                    <div class="flex flex-col gap-3">
-                        <div class="flex items-center gap-4">
-                            <div class="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center text-2xl shrink-0">📁</div>
-                            <div class="flex-1 grid grid-cols-12 gap-3">
-                                <div class="col-span-12 sm:col-span-4">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest" x-text="isEditingCampaign ? 'Campagne en cours de modification' : 'Nom de la nouvelle campagne'"></label>
-                                    <input type="text" x-model="newCampaignName" :disabled="isEditingCampaign" placeholder="Ex: 2026_03_MARS" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all disabled:opacity-60 disabled:bg-slate-100">
+                    <div x-show="campaignWizardStep === 1" class="space-y-6">
+                        <div class="flex items-center gap-3 pb-2 border-b border-slate-100">
+                            <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-xl shrink-0">📁</div>
+                            <div>
+                                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Paramétrage global</h3>
+                                <p class="text-xs text-slate-500">Renseignez les informations de base avant la sélection des agents.</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 sm:p-5 space-y-4">
+                            <div class="flex items-center justify-between gap-3">
+                                <h4 class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Identité de campagne</h4>
+                                <span x-show="!isEditingCampaign" class="text-[10px] font-medium text-amber-600">Non modifiable après création</span>
+                            </div>
+                            <div class="grid grid-cols-12 gap-3">
+                                <div class="col-span-12 lg:col-span-5">
+                                    <label class="text-[11px] font-bold text-slate-600 ml-1" x-text="isEditingCampaign ? 'Campagne en cours de modification' : 'Nom de la nouvelle campagne'"></label>
+                                    <input type="text" x-model="newCampaignName" :disabled="isEditingCampaign" placeholder="Ex: 2026_03_MARS" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all disabled:opacity-60 disabled:bg-slate-100">
                                 </div>
-                                <div class="col-span-12 sm:col-span-3">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Type de campagne</label>
-                                    <select x-model="campaignType" @change="assignToManager = (campaignType === 'review')" :disabled="isEditingCampaign" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl font-bold text-slate-600 outline-none focus:border-amber-500 transition-all disabled:opacity-60 disabled:bg-slate-100">
+                                <div class="col-span-12 sm:col-span-6 lg:col-span-3">
+                                    <label class="text-[11px] font-bold text-slate-600 ml-1">Type de campagne</label>
+                                    <select x-model="campaignType" @change="onCampaignTypeChanged()" :disabled="isEditingCampaign" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl font-bold text-slate-600 outline-none focus:border-amber-500 transition-all disabled:opacity-60 disabled:bg-slate-100">
                                         <option value="scoring">Notation quantitative (Ex: bilans d'écoutes téléphoniques)</option>
                                         <option value="review">Entretien qualitatif (Ex: SPQR)</option>
                                     </select>
                                 </div>
-                                <div class="col-span-12 sm:col-span-3">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Grille d'évaluation</label>
+                                <div class="col-span-12 sm:col-span-6 lg:col-span-4">
+                                    <label class="text-[11px] font-bold text-slate-600 ml-1">Grille d'évaluation</label>
                                     <select x-model="selectedGrilleId"
                                             :disabled="isEditingCampaign"
-                                            class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl font-bold text-slate-600 outline-none focus:border-amber-500 transition-all disabled:opacity-60 disabled:bg-slate-100">
+                                            class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl font-bold text-slate-600 outline-none focus:border-amber-500 transition-all disabled:opacity-60 disabled:bg-slate-100">
                                         <template x-for="g in grillesList" :key="g.id">
                                             <option :value="g.id" x-text="g.title || g.id"></option>
                                         </template>
                                         <option value="default" x-show="grillesList.length === 0">Grille d'Exemple (à dupliquer)</option>
                                     </select>
                                 </div>
-                                <div class="col-span-12 sm:col-span-2">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Objectif / Agent</label>
-                                    <input type="number" x-model="targetEvaluations" min="1" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold text-center transition-all">
+                            </div>
+                            <p x-show="!isEditingCampaign" class="text-[10px] text-amber-600 font-medium">
+                                ⚠️ Le nom, le type de campagne et le choix de la grille ne pourront pas être modifiés après la création.
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div class="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 sm:p-5 space-y-3">
+                                <h4 class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Paramètres d'évaluation</h4>
+                                <div>
+                                    <label class="text-[11px] font-bold text-slate-600 ml-1">Objectif / Agent</label>
+                                    <input type="number"
+                                           x-model="targetEvaluations"
+                                           min="1"
+                                           :readonly="campaignType === 'review'"
+                                           :class="campaignType === 'review' ? 'bg-slate-100 cursor-not-allowed text-slate-600' : ''"
+                                           class="w-full mt-1 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold text-center transition-all bg-white">
+                                    <p class="text-[10px] text-slate-500 mt-1 ml-1" x-show="campaignType !== 'review'">Nombre d'évaluations attendu par agent sur la période.</p>
+                                    <p class="text-[10px] text-amber-600 font-medium mt-1 ml-1" x-show="campaignType === 'review'">Fixé à 1 pour les entretiens qualitatifs.</p>
                                 </div>
-                                <div class="col-span-12 sm:col-span-3">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Période évaluée (Début)</label>
-                                    <input type="date" x-model="period_start" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all">
+                                <div class="flex items-start gap-3 pt-1" :class="{ 'opacity-60': isEditingCampaign }">
+                                    <input type="checkbox" id="assignToManager" x-model="assignToManager" :disabled="isEditingCampaign" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 mt-0.5">
+                                    <label for="assignToManager" class="text-sm font-bold text-slate-700 cursor-pointer leading-5">Évaluation par les Managers (lien hiérarchique)</label>
                                 </div>
-                                <div class="col-span-12 sm:col-span-3">
-                                    <label class="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Période évaluée (Fin)</label>
-                                    <input type="date" x-model="period_end" class="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all">
+                            </div>
+
+                            <div class="bg-slate-50/70 border border-slate-100 rounded-2xl p-4 sm:p-5 space-y-3">
+                                <h4 class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Période évaluée</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-[11px] font-bold text-slate-600 ml-1">Début</label>
+                                        <input type="date" x-model="period_start" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="text-[11px] font-bold text-slate-600 ml-1">Fin</label>
+                                        <input type="date" x-model="period_end" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-amber-500 font-bold transition-all">
+                                    </div>
+                                </div>
+                                <p class="text-[10px] font-medium ml-1"
+                                   :class="(period_start && period_end && new Date(period_start) > new Date(period_end)) ? 'text-rose-500' : 'text-slate-500'"
+                                   x-text="(!period_start || !period_end) ? 'Sélectionnez une date de début et de fin.' : ((new Date(period_start) > new Date(period_end)) ? 'La date de début doit être antérieure à la date de fin.' : 'Période prête.')"></p>
+                            </div>
+                        </div>
+
+                        <div x-show="campaignType === 'review'" class="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 sm:p-5 space-y-4">
+                            <div class="flex items-center justify-between gap-3">
+                                <h4 class="text-[11px] font-black text-indigo-700 uppercase tracking-widest">Paramétrage des statistiques</h4>
+                                <span class="text-[10px] font-medium text-indigo-500">Disponible uniquement pour les entretiens qualitatifs</span>
+                            </div>
+
+                            <div class="space-y-2">
+                                <label class="text-[11px] font-bold text-slate-600 ml-1">Canaux analysés</label>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <label class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 cursor-pointer">
+                                        <input type="checkbox" x-model="statsConfig.channels.phone" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                                        <span class="text-sm font-bold text-slate-700">Téléphone</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 cursor-pointer">
+                                        <input type="checkbox" x-model="statsConfig.channels.email" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                                        <span class="text-sm font-bold text-slate-700">Courriels</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 cursor-pointer">
+                                        <input type="checkbox" x-model="statsConfig.channels.watt" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                                        <span class="text-sm font-bold text-slate-700">WATT</span>
+                                    </label>
+                                </div>
+                                <p class="text-[10px] font-medium ml-1"
+                                   :class="(!statsConfig.channels.phone && !statsConfig.channels.email && !statsConfig.channels.watt) ? 'text-rose-500' : 'text-slate-500'"
+                                   x-text="(!statsConfig.channels.phone && !statsConfig.channels.email && !statsConfig.channels.watt) ? 'Sélectionnez au moins un canal.' : 'Choisissez les canaux inclus dans le calcul.'"></p>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                                    <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Période évaluée (statistiques)</label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-[11px] font-bold text-slate-600 ml-1">Début</label>
+                                            <input type="date" x-model="statsConfig.eval_start" @input="statsEvaluatedPeriodDirty = true" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                        </div>
+                                        <div>
+                                            <label class="text-[11px] font-bold text-slate-600 ml-1">Fin</label>
+                                            <input type="date" x-model="statsConfig.eval_end" @input="statsEvaluatedPeriodDirty = true" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] font-medium ml-1"
+                                       :class="(statsConfig.eval_start && statsConfig.eval_end && new Date(statsConfig.eval_start) > new Date(statsConfig.eval_end)) ? 'text-rose-500' : 'text-slate-500'"
+                                       x-text="(!statsConfig.eval_start || !statsConfig.eval_end) ? 'Saisissez une période évaluée stats.' : ((new Date(statsConfig.eval_start) > new Date(statsConfig.eval_end)) ? 'La date de début doit être antérieure à la date de fin.' : 'Période évaluée stats valide.')"></p>
+                                </div>
+
+                                <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+                                    <label class="text-[11px] font-black text-slate-500 uppercase tracking-widest">Période de comparaison</label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-[11px] font-bold text-slate-600 ml-1">Début</label>
+                                            <input type="date" x-model="statsConfig.compare_start" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                        </div>
+                                        <div>
+                                            <label class="text-[11px] font-bold text-slate-600 ml-1">Fin</label>
+                                            <input type="date" x-model="statsConfig.compare_end" class="w-full mt-1 bg-white border-2 border-slate-100 p-3 rounded-xl outline-none focus:border-indigo-500 font-bold transition-all">
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] font-medium ml-1"
+                                       :class="(statsConfig.compare_start && statsConfig.compare_end && new Date(statsConfig.compare_start) > new Date(statsConfig.compare_end)) ? 'text-rose-500' : 'text-slate-500'"
+                                       x-text="(!statsConfig.compare_start || !statsConfig.compare_end) ? 'Saisissez une période de comparaison.' : ((new Date(statsConfig.compare_start) > new Date(statsConfig.compare_end)) ? 'La date de début doit être antérieure à la date de fin.' : 'Période de comparaison valide.')"></p>
                                 </div>
                             </div>
                         </div>
-                        <p x-show="!isEditingCampaign" class="text-[10px] text-amber-600 font-medium pl-[4.5rem]">
-                            ⚠️ Le nom, le type de campagne et le choix de la grille ne pourront pas être modifiés après la création.
-                        </p>
-                        <div class="flex items-center gap-3 pl-[4.5rem]" :class="{ 'opacity-60': isEditingCampaign }">
-                            <input type="checkbox" id="assignToManager" x-model="assignToManager" :disabled="isEditingCampaign" class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
-                            <label for="assignToManager" class="text-sm font-bold text-slate-700 cursor-pointer">Évaluation par les Managers (lien hiérarchique)</label>
-                        </div>
                     </div>
 
-                    <div class="mt-6 border-t border-slate-100 pt-5">
+                    <div x-show="campaignWizardStep === 2" class="mt-2 border-t border-slate-100 pt-5">
                         <div class="flex justify-between items-end mb-3">
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sélectionner les agents participants</label>
                             <div class="space-x-3">
@@ -175,6 +312,205 @@
                         </div>
                     </div>
 
+                    <div x-show="campaignWizardStep === 3" class="mt-2 border-t border-slate-100 pt-5">
+                        <div class="flex flex-col xl:flex-row gap-4 items-start">
+                            <aside class="w-full xl:w-80 bg-white rounded-2xl shadow-xl border border-slate-100 p-6 shrink-0 h-fit" x-show="!assignToManager">
+                                <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                    <span class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm shrink-0">1</span>
+                                    Sélection des superviseurs
+                                </h2>
+                                <p class="text-sm text-slate-500 mt-2 mb-4">Choisissez les participants et leur poids (%).</p>
+                                <div class="flex items-center justify-between mb-3 text-xs">
+                                    <span class="text-slate-500" x-text="`${selectedSupervisors.length} sélectionné(s)`"></span>
+                                    <span class="font-bold text-purple-600" x-text="`Capacité: ${totalWeight}%`"></span>
+                                </div>
+                                <div class="space-y-2">
+                                    <template x-for="sup in supervisors" :key="sup.id">
+                                        <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border-2 transition-all cursor-pointer"
+                                               :class="selectedSupervisors.includes(sup.id) ? 'border-purple-500 bg-purple-50' : 'border-slate-100 hover:border-purple-300'">
+                                            <input type="checkbox" :value="sup.id" x-model="selectedSupervisors"
+                                                   @change="updateSupervisorSelection()"
+                                                   class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 shrink-0">
+                                            <div class="flex-1 min-w-0">
+                                                <div class="font-bold text-sm truncate" x-text="sup.nom"></div>
+                                                <div class="text-xs text-slate-400 mt-0.5" x-show="selectedSupervisors.includes(sup.id)">
+                                                    <input type="number"
+                                                           :value="supervisorWeights[sup.id] ?? sup.default_weight"
+                                                           @input="supervisorWeights[sup.id] = parseInt($event.target.value)"
+                                                           @click.stop
+                                                           class="w-14 bg-white border border-purple-200 rounded px-1.5 py-0.5 text-center font-bold"
+                                                           min="1" max="200"> %
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </template>
+                                </div>
+                            </aside>
+                            <aside x-show="assignToManager" class="w-full xl:w-80 bg-white rounded-2xl shadow-xl border border-slate-100 p-6 shrink-0 h-fit">
+                                <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                    <span class="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center text-sm shrink-0">1</span>
+                                    Managers concernés
+                                </h2>
+                                <p class="text-sm text-slate-500 mt-2 mb-4">Déduits des agents sélectionnés. Glissez-déposez pour réaffecter si besoin.</p>
+                                <div class="space-y-2">
+                                    <template x-for="supId in selectedSupervisors" :key="supId">
+                                        <div class="flex items-center gap-3 p-3 bg-indigo-50 rounded-xl border-2 border-indigo-200">
+                                            <div class="w-8 h-8 bg-indigo-500 text-white rounded-lg flex items-center justify-center text-sm font-black shrink-0" x-text="(getManagerName(supId) || '').charAt(0)"></div>
+                                            <div class="flex-1 min-w-0 font-bold text-sm truncate" x-text="getManagerName(supId)"></div>
+                                            <span class="text-xs font-black text-indigo-600" x-text="(assignments[supId] || []).length"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </aside>
+
+                            <main class="flex-1 min-w-0 pt-0 pb-2 bg-slate-50">
+                                <section class="mb-6">
+                                    <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                                        <div class="mb-6">
+                                            <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                                <span class="w-8 h-8 bg-amber-500 text-white rounded-lg flex items-center justify-center text-sm">2</span>
+                                                Affectations forcées <span class="text-slate-400 font-normal normal-case text-sm">(optionnel)</span>
+                                            </h2>
+                                            <p class="text-sm text-slate-500 mt-2">Assignez manuellement certains agents à un superviseur avec « Assigner à ». Ces agents ne bougeront pas lors de la répartition automatique.</p>
+                                        </div>
+                                        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 mb-4">
+                                            <div class="flex items-center justify-between mb-3">
+                                                <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">Pool non assigné</h3>
+                                                <span class="text-xl font-black text-amber-600" x-text="poolAgents.length"></span>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-3 mb-3">
+                                                <label class="flex items-center gap-2">
+                                                    <span class="text-[10px] font-bold text-slate-500 uppercase">Site</span>
+                                                    <select x-model="poolFilterSite" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-medium">
+                                                        <option value="">Tous</option>
+                                                        <template x-for="s in sites" :key="s.id">
+                                                            <option :value="s.id" x-text="s.nom"></option>
+                                                        </template>
+                                                    </select>
+                                                </label>
+                                                <label class="flex items-center gap-2">
+                                                    <span class="text-[10px] font-bold text-slate-500 uppercase">Manager</span>
+                                                    <select x-model="poolFilterSupervisor" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white font-medium">
+                                                        <option value="">Tous</option>
+                                                        <template x-for="m in managers" :key="m.id">
+                                                            <option :value="m.id" x-text="m.nom"></option>
+                                                        </template>
+                                                    </select>
+                                                </label>
+                                                <label class="flex items-center gap-2">
+                                                    <span class="text-[10px] font-bold text-slate-500 uppercase">Recherche</span>
+                                                    <input type="text" x-model="poolFilterSearch" placeholder="Nom, prénom…" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 w-40 font-medium placeholder:text-slate-400">
+                                                </label>
+                                                <span x-show="poolFilterSite || poolFilterSearch || poolFilterSupervisor" class="text-[10px] text-slate-400" x-text="'Affichés: ' + filteredPoolAgents.length + ' / ' + poolAgents.length"></span>
+                                            </div>
+                                            <div class="overflow-x-auto overflow-y-hidden pb-2 -mx-1 max-w-full">
+                                                <div id="pool-zone-inline" class="grid grid-rows-2 grid-flow-col auto-cols-[160px] gap-2 w-max min-h-[120px] px-1">
+                                                    <template x-for="agent in filteredPoolAgents" :key="agent.id">
+                                                        <div :data-agent="agent.id" class="agent-card bg-slate-50 p-2 rounded-xl border-2 border-slate-200 hover:border-amber-400 transition-all flex items-start gap-2 h-fit">
+                                                            <div class="flex-1 min-w-0">
+                                                                <div class="font-bold text-xs" x-text="getAgentDisplayName(agent)"></div>
+                                                                <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                                                    <span class="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full" x-text="getSiteName(agent.siteId)"></span>
+                                                                    <span x-show="agent.managerId" class="text-[9px] bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full" x-text="'👔 ' + getManagerName(agent.managerId)"></span>
+                                                                    <select class="text-[10px] font-bold border border-purple-200 rounded-lg px-2 py-1 bg-white cursor-pointer focus:ring-2 focus:ring-purple-400"
+                                                                            @change="assignAgentToSupervisor(agent.id, Number($event.target.value)); $event.target.value = ''"
+                                                                            title="Assigner à un superviseur">
+                                                                        <option value="" selected>→ Assigner à</option>
+                                                                        <template x-for="supId in selectedSupervisors" :key="supId">
+                                                                            <option :value="supId" x-text="assignToManager ? getManagerName(supId) : ((supervisors.find(s => parseInt(s.id) === parseInt(supId)) || {}).nom || '?')"></option>
+                                                                        </template>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="pt-4 mt-4 border-t border-slate-200">
+                                            <div class="mb-4">
+                                                <h2 class="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                                    <span class="w-8 h-8 bg-emerald-500 text-white rounded-lg flex items-center justify-center text-sm">3</span>
+                                                    Répartition automatique et enregistrement
+                                                </h2>
+                                                <p class="text-sm text-slate-500 mt-2">Les agents encore dans le pool seront répartis entre les superviseurs selon les quotas (poids).</p>
+                                            </div>
+                                            <div class="flex flex-wrap gap-4 items-center">
+                                                <button @click="calculateAutoAssignments()"
+                                                        x-show="!assignToManager"
+                                                        :disabled="selectedSupervisors.length === 0 || poolAgents.length === 0"
+                                                        class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                                                    Répartition automatique
+                                                </button>
+                                                <button @click="resetAssignments()"
+                                                        class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-6 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
+                                                    Réinitialiser
+                                                </button>
+                                                <p x-show="poolAgents.length > 0 && campaignAgents.length > 0" class="text-xs text-amber-600 font-bold">
+                                                    <span x-text="poolAgents.length"></span> agent(s) non assigné(s). Vous pouvez enregistrer quand même.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-6 space-y-4">
+                                            <template x-for="supId in selectedSupervisors" :key="supId">
+                                                <div class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden w-full">
+                                                    <div class="w-full p-4 border-b text-left transition-colors flex items-center gap-3 min-w-0"
+                                                         :class="assignToManager ? 'bg-indigo-50 border-indigo-100' : 'bg-purple-50 border-purple-100'">
+                                                        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0 text-white"
+                                                             :class="assignToManager ? 'bg-indigo-500' : 'bg-purple-500'"
+                                                             x-text="((assignToManager ? (getManagerName(supId) || '?') : (((supervisors.find(s => parseInt(s.id) === parseInt(supId)) || {}).nom || '?'))).charAt(0))"></div>
+                                                        <div class="flex-1 min-w-0">
+                                                            <div class="font-black text-base truncate" x-text="assignToManager ? getManagerName(supId) : ((supervisors.find(s => parseInt(s.id) === parseInt(supId)) || {}).nom || 'Inconnu')"></div>
+                                                            <div x-show="!assignToManager" class="text-xs text-purple-600 font-bold" x-text="`Poids: ${supervisorWeights[supId] ?? ((supervisors.find(s => parseInt(s.id) === parseInt(supId)) || {}).default_weight ?? 100)}%`"></div>
+                                                        </div>
+                                                        <div class="text-sm text-slate-600 shrink-0 whitespace-nowrap">
+                                                            <span class="font-black" :class="assignToManager ? 'text-indigo-700' : 'text-purple-700'" x-text="`${assignments[supId]?.length || 0} / ${getQuota(supId)} agents`"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="p-4 min-h-[120px]">
+                                                        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+                                                            <template x-for="agentId in (assignments[supId] || [])" :key="agentId">
+                                                                <div :data-agent="agentId"
+                                                                     x-data="{ agent: getAgentById(agentId) }"
+                                                                     class="agent-card bg-purple-50 p-2 rounded-lg border-2 transition-all flex flex-col gap-1"
+                                                                     :class="agent && agent.managerId === supId && !assignToManager ? 'border-rose-300 conflict-badge' : (assignToManager ? 'border-indigo-200 hover:border-indigo-400' : 'border-purple-200 hover:border-purple-400')">
+                                                                    <div class="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                                                        <span class="font-bold text-[11px] truncate" x-text="agent ? getAgentDisplayName(agent) : ''"></span>
+                                                                        <span x-show="agent" class="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded shrink-0" x-text="getSiteName(agent.siteId)"></span>
+                                                                        <span x-show="agent && agent.managerId" class="text-[9px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded shrink-0" x-text="'👔 ' + getManagerName(agent.managerId)"></span>
+                                                                        <span x-show="isForcedAssigned(supId, agentId)" class="text-[8px] text-indigo-600 font-bold shrink-0">🔒</span>
+                                                                        <span x-show="agent && agent.managerId === supId && !assignToManager" class="text-rose-500 shrink-0" title="Conflit">⚠️</span>
+                                                                    </div>
+                                                                    <div class="flex justify-start">
+                                                                        <select class="text-[10px] font-bold border border-purple-200 rounded px-1.5 py-0.5 bg-white cursor-pointer focus:ring-1 focus:ring-purple-400"
+                                                                                @change="reassignAgent(agentId, supId, $event.target.value); $event.target.value = ''"
+                                                                                title="Changer l'assignation">
+                                                                            <option value="" selected>→ Changer</option>
+                                                                            <option value="pool">Pool</option>
+                                                                            <template x-for="sId in selectedSupervisors" :key="sId">
+                                                                                <option :value="sId" x-text="assignToManager ? getManagerName(sId) : ((supervisors.find(s => parseInt(s.id) === parseInt(sId)) || {}).nom || '?')"></option>
+                                                                            </template>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <div x-show="selectedSupervisors.length === 0" class="text-center py-16 text-slate-400 rounded-2xl border border-slate-200 bg-slate-50/50">
+                                                <p class="text-lg font-bold">Aucun superviseur sélectionné</p>
+                                                <p class="text-sm">Cochez au moins un superviseur à l’étape 1</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            </main>
+                        </div>
+                    </div>
+
                     <div class="mt-5 flex justify-end gap-3">
                         <button x-show="isEditingCampaign" @click="cancelEdit()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 font-black px-5 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
                             Annuler
@@ -182,18 +518,32 @@
                         <a x-show="isEditingCampaign" :href="'admin-criteres.html?campagne=' + encodeURIComponent(newCampaignName)" class="inline-flex items-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-black px-5 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
                             Modifier la grille de cette campagne
                         </a>
-                        <button @click="saveCampaignFromStep1()"
-                                :disabled="!newCampaignName || selectedAgents.length === 0"
+                        <button x-show="campaignWizardStep === 1" @click="saveCampaignFromStep1()"
+                                :disabled="!isStep1Valid()"
                                 class="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-5 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
                             Enregistrer
                         </button>
-                        <button @click="proceedToAssignments()"
-                                :disabled="!newCampaignName || selectedAgents.length === 0"
+                        <button type="button"
+                                x-show="campaignWizardStep > 1"
+                                @click="prevCampaignStep()"
+                                class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-black px-5 py-3 rounded-xl shadow-sm transition-all uppercase text-xs tracking-widest">
+                            Précédent
+                        </button>
+                        <button type="button"
+                                x-show="campaignWizardStep < 3"
+                                @click="nextCampaignStep()"
+                                :disabled="campaignWizardStep === 1 ? !isStep1Valid() : !isStep2Valid()"
+                                class="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg transition-all uppercase text-xs tracking-widest">
+                            Suivant
+                        </button>
+                        <button type="button"
+                                x-show="campaignWizardStep === 3"
+                                @click="saveAndFinalizeCampaign()"
                                 class="bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black px-6 py-3 rounded-xl shadow-lg transition-all uppercase text-xs tracking-widest"
-                                x-text="isEditingCampaign ? 'Configurer la répartition' : 'Passer à l\'étape 2 : Répartition'">
+                                x-text="isEditingCampaign ? 'Valider la répartition' : 'Enregistrer la campagne'">
                         </button>
                     </div>
-                    <p class="text-[10px] text-slate-500 mt-2">Enregistrer sauvegarde la campagne sans aller à l'étape 2. Passer à l'étape 2 enregistre puis ouvre la répartition des superviseurs.</p>
+                    <p class="text-[10px] text-slate-500 mt-2">Enregistrer sauvegarde la campagne sans lancer la répartition. Le wizard en 3 étapes prépare ensuite la transition vers la répartition.</p>
                     <p x-show="!campagnesHandle" class="text-[10px] text-rose-500 mt-3 italic font-bold text-center">
                         ⚠️ L'accès au dossier n'est pas réactivé. Cliquez sur "Rafraîchir" en haut à droite.
                     </p>

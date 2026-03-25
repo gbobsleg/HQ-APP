@@ -37,7 +37,7 @@ function app() {
         })(),
         
         // Formulaire actif (correspond à l'onglet sélectionné)
-        form: { agent: '', campagne: '', duree_min: '', duree_sec: '', offre: '', date_communication: '', note: 0, commentaire: '', scores: {}, comments: {}, textResponses: {}, booleanResponses: {} },
+        form: { agent: '', campagne: '', duree_min: '', duree_sec: '', offre: '', date_communication: '', note: 0, commentaire: '', scores: {}, comments: {}, textResponses: {}, booleanResponses: {}, stats_snapshot: null, stats_analysis_comment: '' },
         
         // Contexte Dossier Agent (Nouveau)
         agentContext: {
@@ -51,6 +51,7 @@ function app() {
         isPanel360Open: false,
         panel360DateFrom: '',
         panel360DateTo: '',
+        isImportingStats: false,
 
         bilanForm: { show: false, agentName: '', evals: [], email: '', comment: '', lastSaved: null, status: 'new', hideNotesInPdf: true }, // Legacy/Used for Bilan Tab
         bilanGenerating: false,
@@ -59,11 +60,13 @@ function app() {
         bilanPromptTemplateEdit: '',
         evalCommentPromptTemplateEdit: '',
         reviewBilanSynthesisEdit: '',
+        statsAnalysisSystemPromptEdit: '',
         emailTemplatesScoringSubjectEdit: '',
         emailTemplatesScoringBodyEdit: '',
         emailTemplatesReviewSubjectEdit: '',
         emailTemplatesReviewBodyEdit: '',
         evalCommentGenerating: false,
+        isGeneratingStatsAnalysisAi: false,
         mistralApiKeyEdit: '',
         mistralApiKeyEditing: false,
         updateSourceEdit: { repoOwner: '', repoName: '', token: '' },
@@ -77,6 +80,14 @@ function app() {
         selectedAgents: [],
         selectedSupervisors: [],
         campaignAssignments: {},
+        supervisorWeights: {},
+        campaignAgents: [],
+        assignments: {},
+        forcedAssignments: {},
+        poolAgents: [],
+        poolFilterSite: '',
+        poolFilterSearch: '',
+        poolFilterSupervisor: '',
         agents: typeof LISTE_AGENTS !== 'undefined' ? LISTE_AGENTS : [],
         allAgents: typeof LISTE_AGENTS !== 'undefined' ? LISTE_AGENTS : [],
         sites: typeof LISTE_SITES !== 'undefined' ? LISTE_SITES : [],
@@ -90,11 +101,21 @@ function app() {
         isEditingCampaign: false,
         currentCampaignHandle: null,
         adminShowCreateForm: false,
+        campaignWizardStep: 1,
         selectedCampaignForAdmin: null,
         selectedGrilleId: 'default',
         campaignType: 'scoring',
+        lastCampaignTypeForPokaYoke: 'scoring',
         period_start: '',
         period_end: '',
+        statsConfig: {
+            channels: { phone: true, email: true, watt: true },
+            eval_start: '',
+            eval_end: '',
+            compare_start: '',
+            compare_end: ''
+        },
+        statsEvaluatedPeriodDirty: false,
         grillesList: [],
         editingGridContext: null,
         currentGridId: 'default',
@@ -463,10 +484,10 @@ function app() {
 
         _normalizePromptsConfig() {
             if (!this.appConfig.prompts) {
-                this.appConfig.prompts = { scoring: { evalComment: '', bilanSynthesis: '' }, review: { bilanSynthesis: '' } };
+                this.appConfig.prompts = { scoring: { evalComment: '', bilanSynthesis: '' }, review: { bilanSynthesis: '', statsAnalysisSystem: '' } };
             }
             if (!this.appConfig.prompts.scoring) this.appConfig.prompts.scoring = { evalComment: '', bilanSynthesis: '' };
-            if (!this.appConfig.prompts.review) this.appConfig.prompts.review = { bilanSynthesis: '' };
+            if (!this.appConfig.prompts.review) this.appConfig.prompts.review = { bilanSynthesis: '', statsAnalysisSystem: '' };
             if (this.appConfig.evalCommentPromptTemplate != null && String(this.appConfig.evalCommentPromptTemplate).trim() !== '') {
                 this.appConfig.prompts.scoring.evalComment = this.appConfig.evalCommentPromptTemplate;
                 delete this.appConfig.evalCommentPromptTemplate;
@@ -483,6 +504,9 @@ function app() {
             }
             if (!this.appConfig.prompts.review.bilanSynthesis || this.appConfig.prompts.review.bilanSynthesis.trim() === '') {
                 this.appConfig.prompts.review.bilanSynthesis = this.getDefaultReviewBilanSynthesisTemplate();
+            }
+            if (!this.appConfig.prompts.review.statsAnalysisSystem || this.appConfig.prompts.review.statsAnalysisSystem.trim() === '') {
+                this.appConfig.prompts.review.statsAnalysisSystem = this.getDefaultStatsAnalysisSystemPromptTemplate();
             }
         },
 
@@ -1005,6 +1029,16 @@ function app() {
                 if (val && !this.agentContext.active) this.filterAgentsForCampaign(val);
                 if (val && this.rootHandle && this.campagnesHandle) await this.loadGridForCampaign(val);
             });
+            this.$watch('period_start', (val) => {
+                if (this.campaignType !== 'review') return;
+                if (this.statsEvaluatedPeriodDirty) return;
+                this.statsConfig.eval_start = val || '';
+            });
+            this.$watch('period_end', (val) => {
+                if (this.campaignType !== 'review') return;
+                if (this.statsEvaluatedPeriodDirty) return;
+                this.statsConfig.eval_end = val || '';
+            });
 
             try {
                 this.rootHandle = await this.getStoredHandle();
@@ -1507,6 +1541,212 @@ function app() {
             });
         },
 
+        async importAgentStats() {
+            if (this._ensureCampaignNotClosed()) return;
+            if (this.isImportingStats) return;
+
+            const repo = window.HQApp && window.HQApp.StatsRepository;
+            if (!repo || typeof repo.loadProductionStats !== 'function') {
+                this.notify("Module StatsRepository indisponible.", "error");
+                return;
+            }
+            if (!this.rootHandle) {
+                this.notify("Sélectionnez la racine du projet pour importer les statistiques.", "error");
+                return;
+            }
+            if (!this.campaignConfig || this.campaignConfig.campaign_type !== 'review') return;
+
+            const agentId = this.agentContext.active ? Number(this.agentContext.agentId) : Number(this.form.agent);
+            if (!Number.isFinite(agentId)) {
+                this.notify("Agent introuvable pour l'import des statistiques.", "error");
+                return;
+            }
+
+            const cfg = this.campaignConfig || {};
+            const rawStatsCfg = (cfg.stats_config && typeof cfg.stats_config === 'object') ? cfg.stats_config : {};
+            const rawChannels = (rawStatsCfg.channels && typeof rawStatsCfg.channels === 'object') ? rawStatsCfg.channels : {};
+            const channels = {
+                phone: rawChannels.phone !== undefined ? !!rawChannels.phone : true,
+                email: rawChannels.email !== undefined ? !!rawChannels.email : true,
+                watt: rawChannels.watt !== undefined ? !!rawChannels.watt : true
+            };
+            if (!channels.phone && !channels.email && !channels.watt) {
+                this.notify("Aucun canal activé dans le paramétrage des statistiques.", "error");
+                return;
+            }
+
+            const evalStart = rawStatsCfg.eval_start || cfg.period_start || '';
+            const evalEnd = rawStatsCfg.eval_end || cfg.period_end || '';
+            if (!evalStart || !evalEnd) {
+                this.notify("Période évaluée introuvable dans la campagne.", "error");
+                return;
+            }
+
+            this.isImportingStats = true;
+            try {
+                const agentsRef = (this.agents && this.agents.length > 0) ? this.agents : (this.allAgents || []);
+                const production = await repo.loadProductionStats(this.rootHandle, {
+                    agentId: agentId,
+                    agents: agentsRef,
+                    dateFrom: evalStart,
+                    dateTo: evalEnd
+                });
+
+                const findByAgent = (arr) => Array.isArray(arr)
+                    ? (arr.find(r => Number(r.agentId) === Number(agentId)) || null)
+                    : null;
+                const toNumber = (v) => {
+                    const n = parseFloat(v);
+                    return Number.isFinite(n) ? n : 0;
+                };
+                const toInt = (v) => Math.round(toNumber(v));
+                const toPercentInt = (v) => {
+                    const n = toNumber(v);
+                    const percent = Math.abs(n) <= 1 ? (n * 100) : n;
+                    return Math.round(percent);
+                };
+
+                const telRow = channels.phone ? findByAgent(production && production.telephone) : null;
+                const mailRow = channels.email ? findByAgent(production && production.courriels) : null;
+                const wattRow = channels.watt ? findByAgent(production && production.watt) : null;
+
+                const zeroTel = {
+                    appels_traites: 0,
+                    dmt: 0,
+                    dmc: 0,
+                    dmmg: 0,
+                    dmpa: 0,
+                    identifications: 0,
+                    reponses_immediates: 0,
+                    transferts: 0,
+                    consultations: 0,
+                    rona: 0
+                };
+
+                const mapTelGlobal = (row) => {
+                    if (!row) return Object.assign({}, zeroTel);
+                    return {
+                        appels_traites: toInt(row.appels_traites),
+                        dmt: toInt(row.dmt),
+                        dmc: toInt(row.dmc),
+                        dmmg: toInt(row.dmmg),
+                        dmpa: toInt(row.dmpa),
+                        identifications: toPercentInt(row.identifications),
+                        reponses_immediates: toPercentInt(row.reponses_immediates),
+                        transferts: toInt(row.transferts),
+                        consultations: toInt(row.consultations),
+                        rona: toInt(row.rona)
+                    };
+                };
+
+                const telGlobal = mapTelGlobal(telRow);
+                const telByOffer = (telRow && Array.isArray(telRow.offres))
+                    ? telRow.offres.map(o => ({
+                        offre: o && o.offre != null ? String(o.offre) : 'GLOBAL',
+                        appels_traites: toInt(o.appels_traites),
+                        dmt: toInt(o.dmt),
+                        dmc: toInt(o.dmc),
+                        dmmg: toInt(o.dmmg),
+                        dmpa: toInt(o.dmpa),
+                        identifications: toPercentInt(o.identifications),
+                        reponses_immediates: toPercentInt(o.reponses_immediates),
+                        transferts: toInt(o.transferts),
+                        consultations: toInt(o.consultations),
+                        rona: toInt(o.rona),
+                        hidden: false
+                    }))
+                    : [];
+
+                const zeroCour = { cloture: 0, envoi_watt: 0, reponse_directe: 0 };
+                const mapCourGlobal = (row) => {
+                    if (!row) return Object.assign({}, zeroCour);
+                    return {
+                        cloture: toInt(row.cloture),
+                        envoi_watt: toInt(row.envoi_watt),
+                        reponse_directe: toInt(row.reponse_directe)
+                    };
+                };
+                const courGlobal = mapCourGlobal(mailRow);
+
+                const zeroWatt = { cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
+                const mapWattGlobal = (row) => {
+                    if (!row) return Object.assign({}, zeroWatt);
+                    return {
+                        cloture_manuelle: toInt(row.cloture_manuelle),
+                        reroutage_individuel: toInt(row.reroutage_individuel),
+                        transfert_prod: toInt(row.transfert_prod)
+                    };
+                };
+                const wattGlobal = mapWattGlobal(wattRow);
+
+                // Agrégation wattDetail par circuit sur la période (loadProductionStats renvoie wattDetail en "brut date+circuit")
+                const circuitAgg = {};
+                if (channels.watt && production && Array.isArray(production.wattDetail)) {
+                    for (let i = 0; i < production.wattDetail.length; i++) {
+                        const r = production.wattDetail[i];
+                        if (!r) continue;
+                        const circuit = (r.circuit != null ? String(r.circuit).trim() : '');
+                        if (!circuit) continue;
+                        if (!circuitAgg[circuit]) circuitAgg[circuit] = { circuit: circuit, cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
+                        circuitAgg[circuit].cloture_manuelle += toNumber(r.cloture_manuelle);
+                        circuitAgg[circuit].reroutage_individuel += toNumber(r.reroutage_individuel);
+                        circuitAgg[circuit].transfert_prod += toNumber(r.transfert_prod);
+                    }
+                }
+                const wattByCircuit = Object.keys(circuitAgg).map(k => {
+                    const row = circuitAgg[k];
+                    return {
+                        circuit: row.circuit,
+                        cloture_manuelle: toInt(row.cloture_manuelle),
+                        reroutage_individuel: toInt(row.reroutage_individuel),
+                        transfert_prod: toInt(row.transfert_prod),
+                        hidden: false
+                    };
+                });
+
+                this.form.stats_snapshot = {
+                    version: 2,
+                    imported_at: new Date().toISOString(),
+                    period: {
+                        eval_start: evalStart,
+                        eval_end: evalEnd,
+                        compare_start: rawStatsCfg.compare_start || '',
+                        compare_end: rawStatsCfg.compare_end || ''
+                    },
+                    channels: channels,
+                    source: {
+                        campaign: this.form.campagne || this.agentContext.campaignName || '',
+                        campaign_type: 'review'
+                    },
+                    metrics: {
+                        telephone: {
+                            hidden: !channels.phone,
+                            global: telGlobal,
+                            by_offer: telByOffer
+                        },
+                        courriels: {
+                            hidden: !channels.email,
+                            global: courGlobal
+                        },
+                        watt: {
+                            hidden: !channels.watt,
+                            global: wattGlobal,
+                            by_circuit: wattByCircuit
+                        }
+                    }
+                };
+
+                if (typeof this.form.stats_analysis_comment !== 'string') this.form.stats_analysis_comment = '';
+                this.evalSaveStatus = 'Modifications...';
+                this.notify("Statistiques importées pour la période évaluée.", "success");
+            } catch (e) {
+                console.error(e);
+                this.notify("Erreur lors de l'import des statistiques.", "error");
+            } finally {
+                this.isImportingStats = false;
+            }
+        },
+
         createEmptyEval(agentId, agentDisplayName, campagne) {
             var base = (this.evaluationEngine && this.evaluationEngine.getDefaultFormState) ? this.evaluationEngine.getDefaultFormState({ sections: this.grid }) : { scores: {}, comments: {}, textResponses: {}, booleanResponses: {}, note: '0.0' };
             return Object.assign({}, base, {
@@ -1516,7 +1756,9 @@ function app() {
                 duree_min: '', duree_sec: '',
                 offre: '',
                 date_communication: '',
-                commentaire: ''
+                commentaire: '',
+                stats_snapshot: null,
+                stats_analysis_comment: ''
             });
         },
 
@@ -1532,6 +1774,124 @@ function app() {
             if (tab.type === 'eval') {
                 const data = JSON.parse(JSON.stringify(tab.data));
                 this.form = data;
+                if (!Object.prototype.hasOwnProperty.call(this.form, 'stats_snapshot')) this.form.stats_snapshot = null;
+                if (typeof this.form.stats_analysis_comment !== 'string') this.form.stats_analysis_comment = '';
+
+                // Normalisation rétrocompatible : stats_snapshot V1 (mono-ligne) -> V2 (global + by_offer/by_circuit).
+                if (this.form.stats_snapshot && this.form.stats_snapshot.metrics) {
+                    const snap = this.form.stats_snapshot;
+                    const metrics = snap.metrics || {};
+                    const hasV2Shape = metrics.telephone && metrics.telephone.global && Array.isArray(metrics.telephone.by_offer);
+                    const asPercentIntLegacy = (v) => {
+                        const n = parseFloat(v);
+                        if (!Number.isFinite(n)) return 0;
+                        const pct = Math.abs(n) <= 1 ? (n * 100) : n;
+                        return Math.round(pct);
+                    };
+                    if (snap.version !== 2 || !hasV2Shape) {
+                        const channels = snap.channels || { phone: true, email: true, watt: true };
+
+                        const oldTel = metrics.telephone || null;
+                        const oldCour = metrics.courriels || null;
+                        const oldWatt = metrics.watt || null;
+
+                        const zeroTel = {
+                            appels_traites: 0, dmt: 0, dmc: 0, dmmg: 0, dmpa: 0,
+                            identifications: 0, reponses_immediates: 0, transferts: 0, consultations: 0, rona: 0
+                        };
+                        const telGlobal = oldTel && typeof oldTel === 'object' ? {
+                            appels_traites: oldTel.appels_traites ?? 0,
+                            dmt: oldTel.dmt ?? 0,
+                            dmc: oldTel.dmc ?? 0,
+                            dmmg: oldTel.dmmg ?? 0,
+                            dmpa: oldTel.dmpa ?? 0,
+                            identifications: asPercentIntLegacy(oldTel.identifications ?? 0),
+                            reponses_immediates: asPercentIntLegacy(oldTel.reponses_immediates ?? 0),
+                            transferts: oldTel.transferts ?? 0,
+                            consultations: oldTel.consultations ?? 0,
+                            rona: oldTel.rona ?? 0
+                        } : Object.assign({}, zeroTel);
+
+                        const zeroCour = { cloture: 0, envoi_watt: 0, reponse_directe: 0 };
+                        const courGlobal = oldCour && typeof oldCour === 'object' ? {
+                            cloture: oldCour.cloture ?? 0,
+                            envoi_watt: oldCour.envoi_watt ?? 0,
+                            reponse_directe: oldCour.reponse_directe ?? 0
+                        } : Object.assign({}, zeroCour);
+
+                        const zeroWatt = { cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
+                        const wattGlobal = oldWatt && typeof oldWatt === 'object' ? {
+                            cloture_manuelle: oldWatt.cloture_manuelle ?? 0,
+                            reroutage_individuel: oldWatt.reroutage_individuel ?? 0,
+                            transfert_prod: oldWatt.transfert_prod ?? 0
+                        } : Object.assign({}, zeroWatt);
+
+                        const telByOffer = (oldTel && typeof oldTel === 'object') ? [{
+                            offre: 'GLOBAL',
+                            appels_traites: telGlobal.appels_traites,
+                            dmt: telGlobal.dmt,
+                            dmc: telGlobal.dmc,
+                            dmmg: telGlobal.dmmg,
+                            dmpa: telGlobal.dmpa,
+                            identifications: telGlobal.identifications,
+                            reponses_immediates: telGlobal.reponses_immediates,
+                            transferts: telGlobal.transferts,
+                            consultations: telGlobal.consultations,
+                            rona: telGlobal.rona,
+                            hidden: false
+                        }] : [];
+
+                        const wattByCircuit = (oldWatt && typeof oldWatt === 'object') ? [{
+                            circuit: 'GLOBAL',
+                            cloture_manuelle: wattGlobal.cloture_manuelle,
+                            reroutage_individuel: wattGlobal.reroutage_individuel,
+                            transfert_prod: wattGlobal.transfert_prod,
+                            hidden: false
+                        }] : [];
+
+                        this.form.stats_snapshot = Object.assign({}, snap, {
+                            version: 2,
+                            metrics: {
+                                telephone: {
+                                    hidden: !channels.phone,
+                                    global: telGlobal,
+                                    by_offer: telByOffer
+                                },
+                                courriels: {
+                                    hidden: !channels.email,
+                                    global: courGlobal
+                                },
+                                watt: {
+                                    hidden: !channels.watt,
+                                    global: wattGlobal,
+                                    by_circuit: wattByCircuit
+                                }
+                            }
+                        });
+                    } else {
+                        // Assurer la présence des flags `hidden` sur V2.
+                        if (metrics.telephone && metrics.telephone.global) {
+                            metrics.telephone.global.identifications = asPercentIntLegacy(metrics.telephone.global.identifications);
+                            metrics.telephone.global.reponses_immediates = asPercentIntLegacy(metrics.telephone.global.reponses_immediates);
+                        }
+                        if (metrics.telephone && Array.isArray(metrics.telephone.by_offer)) {
+                            metrics.telephone.by_offer.forEach(r => {
+                                if (!r || typeof r !== 'object') return;
+                                if (typeof r.hidden !== 'boolean') r.hidden = false;
+                                r.identifications = asPercentIntLegacy(r.identifications);
+                                r.reponses_immediates = asPercentIntLegacy(r.reponses_immediates);
+                            });
+                        }
+                        if (metrics.watt && Array.isArray(metrics.watt.by_circuit)) {
+                            metrics.watt.by_circuit.forEach(r => { if (!r || typeof r !== 'object') return; if (typeof r.hidden !== 'boolean') r.hidden = false; });
+                        }
+                        if (metrics.telephone && typeof metrics.telephone.hidden !== 'boolean') metrics.telephone.hidden = false;
+                        if (metrics.courriels && typeof metrics.courriels.hidden !== 'boolean') metrics.courriels.hidden = false;
+                        if (metrics.watt && typeof metrics.watt.hidden !== 'boolean') metrics.watt.hidden = false;
+                    }
+                }
+
+                this.isImportingStats = false;
                 if (this.evaluationEngine && this.evaluationEngine.computeNote) this.form.note = this.evaluationEngine.computeNote(this.form, { sections: this.grid });
                 this.lastPersistedEvalJson = JSON.stringify(this.form);
                 this.evalSaveStatus = 'Enregistré';
@@ -2038,6 +2398,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         buildBilanPromptForAI() {
             // Confidentialité PII : aucun prénom/nom d'agent n'est transmis à l'API IA
             const campaignName = this.agentContext.campaignName || 'Campagne';
+            const isReview = this.campaignConfig && this.campaignConfig.campaign_type === 'review';
             const evals = this.bilanForm.evals || [];
             const evalsBlockLines = [];
 
@@ -2062,14 +2423,40 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     const scoreIds = Object.keys(scores);
                     if (scoreIds.length > 0) {
                         evalsBlockLines.push("Détail des critères :");
-                        scoreIds.forEach(id => {
-                            const label = this.getCriterionLabel(id);
-                            const max = this.getCriterionMax(id);
-                            const val = scores[id];
-                            const maxStr = max != null ? `/${max}` : '';
-                            const comment = comments[id] ? ` — Commentaire : ${comments[id]}` : "";
-                            evalsBlockLines.push(`  - ${label} : ${val}${maxStr}${comment}`);
+                        const gridSections = this.grid || [];
+                        let hasStructuredLines = false;
+                        gridSections.forEach((sec) => {
+                            const sectionLabel = (sec && sec.label) ? sec.label : 'Rubrique';
+                            const fields = (sec && sec.fields) ? sec.fields : [];
+                            const sectionLines = [];
+                            fields.forEach((field) => {
+                                if (!field || field.type !== 'scoring') return;
+                                const id = field.id;
+                                const val = scores[id];
+                                if (val == null || val === '') return;
+                                const label = field.label || this.getCriterionLabel(id);
+                                const max = field.max != null ? field.max : this.getCriterionMax(id);
+                                const maxStr = max != null ? `/${max}` : '';
+                                const comment = comments[id] ? ` — Commentaire : ${comments[id]}` : '';
+                                sectionLines.push(`  - ${label} : ${val}${maxStr}${comment}`);
+                            });
+                            if (sectionLines.length > 0) {
+                                hasStructuredLines = true;
+                                evalsBlockLines.push(`  [${sectionLabel}]`);
+                                sectionLines.forEach(line => evalsBlockLines.push(line));
+                            }
                         });
+                        // Fallback défensif si la grille est absente/incohérente.
+                        if (!hasStructuredLines) {
+                            scoreIds.forEach(id => {
+                                const label = this.getCriterionLabel(id);
+                                const max = this.getCriterionMax(id);
+                                const val = scores[id];
+                                const maxStr = max != null ? `/${max}` : '';
+                                const comment = comments[id] ? ` — Commentaire : ${comments[id]}` : '';
+                                evalsBlockLines.push(`  - ${label} : ${val}${maxStr}${comment}`);
+                            });
+                        }
                         evalsBlockLines.push("");
                     }
 
@@ -2079,12 +2466,17 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         evalsBlockLines.push(commentaireGlobal);
                         evalsBlockLines.push("");
                     }
+                    const statsAnalysis = (d.stats_analysis_comment || '').trim();
+                    if (isReview && statsAnalysis) {
+                        evalsBlockLines.push("=== ANALYSE DES STATISTIQUES ===");
+                        evalsBlockLines.push(statsAnalysis);
+                        evalsBlockLines.push("");
+                    }
                     evalsBlockLines.push("");
                 });
             }
 
             const evaluationsBlock = evalsBlockLines.join("\n");
-            const isReview = this.campaignConfig && this.campaignConfig.campaign_type === 'review';
             const templateSource = isReview
                 ? (this.appConfig.prompts && this.appConfig.prompts.review && this.appConfig.prompts.review.bilanSynthesis)
                 : (this.appConfig.prompts && this.appConfig.prompts.scoring && this.appConfig.prompts.scoring.bilanSynthesis);
@@ -2098,22 +2490,33 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     const boolResp = d.booleanResponses || {};
                     const scoresData = d.scores || {};
                     this.grid && this.grid.forEach((sec) => {
+                        const sectionLabel = (sec && sec.label) ? sec.label : 'Rubrique';
+                        let sectionLines = [];
                         (sec.fields || []).forEach((field) => {
                             if (field.type === 'textarea') {
                                 const v = textResp[field.id] != null ? String(textResp[field.id]).trim() : '';
-                                if (v) reviewLines.push('  - ' + (field.label || field.id) + ' : ' + v);
+                                if (v) sectionLines.push('  - ' + (field.label || field.id) + ' : ' + v);
                             } else if (field.type === 'boolean') {
                                 const b = boolResp[field.id];
-                                reviewLines.push('  - ' + (field.label || field.id) + ' : ' + (b ? 'Oui' : 'Non'));
+                                sectionLines.push('  - ' + (field.label || field.id) + ' : ' + (b ? 'Oui' : 'Non'));
                             } else if (field.type === 'scoring') {
                                 const val = scoresData[field.id];
                                 if (val != null && val !== '') {
                                     const max = field.max != null ? field.max : 0;
-                                    reviewLines.push('  - ' + (field.label || field.id) + ' : ' + val + '/' + max);
+                                    sectionLines.push('  - ' + (field.label || field.id) + ' : ' + val + '/' + max);
                                 }
                             }
                         });
+                        if (sectionLines.length > 0) {
+                            reviewLines.push('[' + sectionLabel + ']');
+                            sectionLines.forEach(line => reviewLines.push(line));
+                            reviewLines.push('');
+                        }
                     });
+                    const statsAnalysisReview = (d.stats_analysis_comment || '').trim();
+                    if (statsAnalysisReview) {
+                        reviewLines.push('  - Analyse des statistiques : ' + statsAnalysisReview);
+                    }
                 });
                 const criteriaBlock = reviewLines.length > 0 ? 'Réponses :\n\n' + reviewLines.join('\n') : '(Aucune réponse renseignée.)';
                 const reviewDate = (evals[0] && evals[0].date) ? evals[0].date : 'Date inconnue';
@@ -2189,6 +2592,10 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             return "Tu es un assistant qui rédige la synthèse du bilan d'un entretien qualitatif pour un conseiller.\nDonnées de l'entretien ci-dessous (réponses aux questions qualitatives).\nRédige une synthèse en 4 à 6 lignes : points forts, axes de progrès, objectif si pertinent. Style factuel et bienveillant. Base-toi uniquement sur les données ci-dessous.\n\nDate de l'entretien : {{date}}\n\n{{criteriaBlock}}\n\nRédige maintenant la synthèse du bilan.";
         },
 
+        getDefaultStatsAnalysisSystemPromptTemplate() {
+            return "SYSTEM PROMPT\nTu es un manager bienveillant mais factuel qui fait le bilan avec son agent.\nRédige une synthèse fluide (4 à 5 phrases maximum).\nRègles strictes :\n- Adresse-toi DIRECTEMENT à l'agent en le tutoyant ('tu', 'ta', 'tes').\n- Fais des sauts de ligne pour aérer le texte, mais n'utilise JAMAIS de listes à puces (ni tirets, ni astérisques).\n- Ne commente JAMAIS les écarts de volumes totaux d'appels.\nStructure obligatoire :\n1/ Bilan global rapide.\n2/ Cite une offre en progression (utilise les chiffres pour comparer avec N-1 ET avec la moyenne régionale).\n3/ Cite une offre ou un point en dégradation (utilise les chiffres pour comparer avec N-1 ET avec la moyenne régionale).\n4/ Termine par 'Proposition d'action :' suivi d'une action très concrète.";
+        },
+
         initEvalCommentPromptEdit() {
             const v = this.appConfig.prompts && this.appConfig.prompts.scoring && this.appConfig.prompts.scoring.evalComment;
             this.evalCommentPromptTemplateEdit = (v != null && String(v).trim() !== "") ? v : this.getDefaultEvalCommentPromptTemplate();
@@ -2199,8 +2606,24 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.reviewBilanSynthesisEdit = (v != null && String(v).trim() !== "") ? v : this.getDefaultReviewBilanSynthesisTemplate();
         },
 
+        initStatsAnalysisSystemPromptEdit() {
+            const v = this.appConfig.prompts && this.appConfig.prompts.review && this.appConfig.prompts.review.statsAnalysisSystem;
+            this.statsAnalysisSystemPromptEdit = (v != null && String(v).trim() !== "") ? v : this.getDefaultStatsAnalysisSystemPromptTemplate();
+        },
+
         resetEvalCommentPromptTemplate() {
             this.evalCommentPromptTemplateEdit = this.getDefaultEvalCommentPromptTemplate();
+        },
+
+        saveStatsAnalysisSystemPromptTemplate() {
+            if (!this.appConfig.prompts) this.appConfig.prompts = { scoring: {}, review: {} };
+            if (!this.appConfig.prompts.review) this.appConfig.prompts.review = {};
+            this.appConfig.prompts.review.statsAnalysisSystem = this.statsAnalysisSystemPromptEdit;
+            this.saveAppConfig();
+        },
+
+        resetStatsAnalysisSystemPromptTemplate() {
+            this.statsAnalysisSystemPromptEdit = this.getDefaultStatsAnalysisSystemPromptTemplate();
         },
 
         buildEvalCommentPromptForAI() {
@@ -2264,6 +2687,329 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 .replace(/\{\{offre\}\}/g, offre)
                 .replace(/\{\{note\}\}/g, note)
                 .replace(/\{\{date\}\}/g, date);
+        },
+
+        async buildStatsPromptForAI() {
+            const snap = this.form && this.form.stats_snapshot ? this.form.stats_snapshot : null;
+            if (!snap || !snap.metrics) {
+                throw new Error("Aucun snapshot de statistiques disponible.");
+            }
+            const repo = window.HQApp && window.HQApp.StatsRepository;
+            if (!repo || typeof repo.loadProductionStats !== 'function' || typeof repo.aggregatePerimeterStats !== 'function') {
+                throw new Error("Module StatsRepository indisponible.");
+            }
+            if (!this.rootHandle) {
+                throw new Error("Sélectionnez la racine du projet pour analyser les statistiques.");
+            }
+            const agentId = this.agentContext.active ? Number(this.agentContext.agentId) : Number(this.form.agent);
+            if (!Number.isFinite(agentId)) {
+                throw new Error("Agent introuvable pour l'analyse IA.");
+            }
+
+            const period = snap.period || {};
+            const evalStart = period.eval_start || (this.campaignConfig && this.campaignConfig.period_start) || '';
+            const evalEnd = period.eval_end || (this.campaignConfig && this.campaignConfig.period_end) || '';
+            const compareStart = period.compare_start || '';
+            const compareEnd = period.compare_end || '';
+
+            const agentsRef = (this.agents && this.agents.length > 0) ? this.agents : (this.allAgents || []);
+            let compareRaw = { telephone: [], courriels: [], watt: [], wattDetail: [] };
+            if (compareStart && compareEnd) {
+                compareRaw = await repo.loadProductionStats(this.rootHandle, {
+                    agentId: agentId,
+                    agents: agentsRef,
+                    dateFrom: compareStart,
+                    dateTo: compareEnd
+                });
+            }
+
+            const perimeterRaw = await repo.loadProductionStats(this.rootHandle, {
+                agents: agentsRef,
+                dateFrom: evalStart || undefined,
+                dateTo: evalEnd || undefined
+            });
+            const perimeterDto = repo.aggregatePerimeterStats(perimeterRaw || {}, null);
+
+            const KPI_META = {
+                dmt: { label: "DMT (Durée moyenne de traitement)", unit: "s", goal: "lower_is_better" },
+                dmc: { label: "DMC (Durée moyenne de communication)", unit: "s", goal: "lower_is_better" },
+                dmmg: { label: "DMMG (Durée de mise en garde)", unit: "s", goal: "lower_is_better" },
+                dmpa: { label: "DMPA (Durée moyenne de post-appel)", unit: "s", goal: "lower_is_better" },
+                identifications: { label: "Taux d'identification des appels", unit: "%", goal: "higher_is_better" },
+                reponses_immediates: { label: "Taux de réponses immédiates", unit: "%", goal: "higher_is_better" },
+                rona: { label: "Appels non décrochés (RONA)", unit: "", goal: "lower_is_better" }
+            };
+            const TIME_METRICS = { dmt: true, dmc: true, dmmg: true, dmpa: true };
+
+            const toNumber = (v) => {
+                const n = parseFloat(v);
+                return Number.isFinite(n) ? n : null;
+            };
+            const asPercentInt = (v) => {
+                const n = toNumber(v);
+                if (n == null) return null;
+                const percent = Math.abs(n) <= 1 ? (n * 100) : n;
+                return Math.round(percent);
+            };
+            const formatDuration = (seconds) => {
+                const n = toNumber(seconds);
+                if (n == null) return null;
+                const totalSec = Math.max(0, Math.round(n));
+                const m = Math.floor(totalSec / 60);
+                const s = String(totalSec % 60).padStart(2, '0');
+                return m + "m" + s;
+            };
+            const normalizeValue = (metric, value) => {
+                const n = toNumber(value);
+                if (n == null) return null;
+                const meta = KPI_META[metric];
+                if (meta && meta.unit === '%') return asPercentInt(n);
+                return Math.round(n);
+            };
+            const formatValue = (metric, value) => {
+                const n = normalizeValue(metric, value);
+                if (n == null) return null;
+                if (TIME_METRICS[metric]) return formatDuration(n);
+                const unit = KPI_META[metric] && KPI_META[metric].unit ? KPI_META[metric].unit : '';
+                return unit ? (n + unit) : String(n);
+            };
+            const classifyDelta = (metric, evalVal, refVal) => {
+                const e = normalizeValue(metric, evalVal);
+                const r = normalizeValue(metric, refVal);
+                if (e == null || r == null) return null;
+                const diff = e - r;
+                if (diff === 0) return { status: "Stable", diff: 0, evalValue: e, refValue: r };
+                const meta = KPI_META[metric] || { goal: "higher_is_better" };
+                const improved = meta.goal === "lower_is_better" ? (diff < 0) : (diff > 0);
+                return {
+                    status: improved ? "Amélioration" : "Dégradation",
+                    diff: Math.abs(diff),
+                    evalValue: e,
+                    refValue: r
+                };
+            };
+            const semanticLine = (metric, evalVal, refVal, refLabel) => {
+                const m = KPI_META[metric];
+                if (!m) return null;
+                const c = classifyDelta(metric, evalVal, refVal);
+                if (!c) return null;
+                if (c.status === "Stable") {
+                    return "- " + m.label + " : Stable (" + c.evalValue + (m.unit || '') + " vs " + c.refValue + (m.unit || '') + ", référence " + refLabel + ").";
+                }
+                const diffText = TIME_METRICS[metric] ? formatDuration(c.diff) : (c.diff + (m.unit || ''));
+                const evalText = TIME_METRICS[metric] ? formatDuration(c.evalValue) : (c.evalValue + (m.unit || ''));
+                const refText = TIME_METRICS[metric] ? formatDuration(c.refValue) : (c.refValue + (m.unit || ''));
+                return "- " + m.label + " : " + c.status + " de " + diffText + " (" + evalText + " vs " + refText + ", référence " + refLabel + ").";
+            };
+            const findByAgent = (arr) => Array.isArray(arr)
+                ? (arr.find(r => Number(r.agentId) === Number(agentId)) || null)
+                : null;
+            const findOffer = (offers, name) => {
+                if (!Array.isArray(offers)) return null;
+                const target = String(name || '').trim();
+                return offers.find(o => String((o && o.offre) || '').trim() === target) || null;
+            };
+
+            const visibleChannels = {
+                phone: !!(snap.channels && snap.channels.phone && snap.metrics.telephone && snap.metrics.telephone.hidden !== true),
+                email: !!(snap.channels && snap.channels.email && snap.metrics.courriels && snap.metrics.courriels.hidden !== true),
+                watt: !!(snap.channels && snap.channels.watt && snap.metrics.watt && snap.metrics.watt.hidden !== true)
+            };
+
+            const contextBlock = [];
+            contextBlock.push("CONTEXTE");
+            contextBlock.push("- Période évaluée : " + (evalStart || 'n/a') + " -> " + (evalEnd || 'n/a'));
+            contextBlock.push("- Période comparaison : " + ((compareStart && compareEnd) ? (compareStart + " -> " + compareEnd) : "n/a"));
+            contextBlock.push("- Moyenne du périmètre : calcul identique au Dashboard.");
+
+            const performanceBlock = [];
+            performanceBlock.push("PERFORMANCES AGENT (période évaluée)");
+            const evolutionBlock = [];
+            evolutionBlock.push("EVOLUTION (vs période comparaison)");
+            const benchmarkBlock = [];
+            benchmarkBlock.push("MOYENNE DU PERIMETRE (vs période évaluée)");
+
+            if (visibleChannels.phone) {
+                const telEval = snap.metrics.telephone || {};
+                const evalOffers = Array.isArray(telEval.by_offer) ? telEval.by_offer.filter(r => r && r.hidden !== true) : [];
+                const compareTelAgent = findByAgent(compareRaw && compareRaw.telephone);
+                const compareOffers = compareTelAgent && Array.isArray(compareTelAgent.offres) ? compareTelAgent.offres : [];
+                const perimeterTel = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.telephone))
+                    ? (perimeterDto.production.telephone[0] || null)
+                    : null;
+                const perimeterOffers = perimeterTel && Array.isArray(perimeterTel.offres) ? perimeterTel.offres : [];
+                const telGlobal = telEval && telEval.global ? telEval.global : null;
+
+                performanceBlock.push("Téléphone (offres visibles)");
+                if (telGlobal) {
+                    performanceBlock.push("- Offre GLOBAL : volume évalué=" + (normalizeValue('dmt', telGlobal.appels_traites) ?? 0) + " appels.");
+                    performanceBlock.push("  " + (KPI_META.dmt.label + " : " + (formatValue('dmt', telGlobal.dmt) || 'n/a')) + " | " + (KPI_META.dmc.label + " : " + (formatValue('dmc', telGlobal.dmc) || 'n/a')) + " | " + (KPI_META.dmmg.label + " : " + (formatValue('dmmg', telGlobal.dmmg) || 'n/a')) + " | " + (KPI_META.dmpa.label + " : " + (formatValue('dmpa', telGlobal.dmpa) || 'n/a')) + " | " + (KPI_META.identifications.label + " : " + (formatValue('identifications', telGlobal.identifications) || 'n/a')) + " | " + (KPI_META.reponses_immediates.label + " : " + (formatValue('reponses_immediates', telGlobal.reponses_immediates) || 'n/a')) + " | " + (KPI_META.rona.label + " : " + (formatValue('rona', telGlobal.rona) || 'n/a')));
+                    const compareGlobalLines = [
+                        semanticLine('dmt', telGlobal.dmt, compareTelAgent && compareTelAgent.dmt, 'N-1 global'),
+                            semanticLine('dmmg', telGlobal.dmmg, compareTelAgent && compareTelAgent.dmmg, 'N-1 global'),
+                        semanticLine('identifications', telGlobal.identifications, compareTelAgent && compareTelAgent.identifications, 'N-1 global'),
+                        semanticLine('reponses_immediates', telGlobal.reponses_immediates, compareTelAgent && compareTelAgent.reponses_immediates, 'N-1 global'),
+                        semanticLine('rona', telGlobal.rona, compareTelAgent && compareTelAgent.rona, 'N-1 global')
+                    ].filter(Boolean);
+                    if (compareGlobalLines.length > 0) {
+                        evolutionBlock.push("- Offre GLOBAL :");
+                        compareGlobalLines.forEach(l => evolutionBlock.push("  " + l));
+                    }
+                    const benchmarkGlobalLines = [
+                        semanticLine('dmt', telGlobal.dmt, perimeterTel && perimeterTel.dmt, 'moyenne périmètre globale'),
+                        semanticLine('dmmg', telGlobal.dmmg, perimeterTel && perimeterTel.dmmg, 'moyenne périmètre globale'),
+                        semanticLine('identifications', telGlobal.identifications, perimeterTel && perimeterTel.identifications, 'moyenne périmètre globale'),
+                        semanticLine('reponses_immediates', telGlobal.reponses_immediates, perimeterTel && perimeterTel.reponses_immediates, 'moyenne périmètre globale')
+                    ].filter(Boolean);
+                    if (benchmarkGlobalLines.length > 0) {
+                        benchmarkBlock.push("- Offre GLOBAL :");
+                        benchmarkGlobalLines.forEach(l => benchmarkBlock.push("  " + l));
+                    }
+                }
+                if (evalOffers.length === 0) {
+                    performanceBlock.push("- Aucune offre visible.");
+                } else {
+                    for (let i = 0; i < evalOffers.length; i++) {
+                        const e = evalOffers[i];
+                        const offerName = (e.offre || 'GLOBAL');
+                        const c = findOffer(compareOffers, offerName);
+                        const p = findOffer(perimeterOffers, offerName);
+                        performanceBlock.push("- Offre " + offerName + " : volume évalué=" + (normalizeValue('dmt', e.appels_traites) ?? 0) + " appels.");
+                        performanceBlock.push("  " + (KPI_META.dmt.label + " : " + (formatValue('dmt', e.dmt) || 'n/a')) + " | " + (KPI_META.dmc.label + " : " + (formatValue('dmc', e.dmc) || 'n/a')) + " | " + (KPI_META.dmmg.label + " : " + (formatValue('dmmg', e.dmmg) || 'n/a')) + " | " + (KPI_META.dmpa.label + " : " + (formatValue('dmpa', e.dmpa) || 'n/a')) + " | " + (KPI_META.identifications.label + " : " + (formatValue('identifications', e.identifications) || 'n/a')) + " | " + (KPI_META.reponses_immediates.label + " : " + (formatValue('reponses_immediates', e.reponses_immediates) || 'n/a')) + " | " + (KPI_META.rona.label + " : " + (formatValue('rona', e.rona) || 'n/a')));
+
+                        const compareLines = [
+                            semanticLine('dmt', e.dmt, c && c.dmt, 'N-1'),
+                            semanticLine('dmmg', e.dmmg, c && c.dmmg, 'N-1'),
+                            semanticLine('identifications', e.identifications, c && c.identifications, 'N-1'),
+                            semanticLine('reponses_immediates', e.reponses_immediates, c && c.reponses_immediates, 'N-1'),
+                            semanticLine('rona', e.rona, c && c.rona, 'N-1')
+                        ].filter(Boolean);
+                        if (compareLines.length > 0) {
+                            evolutionBlock.push("- Offre " + offerName + " :");
+                            compareLines.forEach(l => evolutionBlock.push("  " + l));
+                        } else {
+                            evolutionBlock.push("- Offre " + offerName + " : comparaison indisponible.");
+                        }
+
+                        const benchmarkLines = [
+                            semanticLine('dmt', e.dmt, p && p.dmt, 'périmètre'),
+                            semanticLine('dmmg', e.dmmg, p && p.dmmg, 'périmètre'),
+                            semanticLine('identifications', e.identifications, p && p.identifications, 'périmètre'),
+                            semanticLine('reponses_immediates', e.reponses_immediates, p && p.reponses_immediates, 'périmètre')
+                        ].filter(Boolean);
+                        if (benchmarkLines.length > 0) {
+                            benchmarkBlock.push("- Offre " + offerName + " :");
+                            benchmarkLines.forEach(l => benchmarkBlock.push("  " + l));
+                        } else {
+                            benchmarkBlock.push("- Offre " + offerName + " : moyenne du périmètre indisponible.");
+                        }
+                    }
+                }
+            }
+
+            if (visibleChannels.email) {
+                const e = (snap.metrics && snap.metrics.courriels && snap.metrics.courriels.global) ? snap.metrics.courriels.global : null;
+                const cAgent = findByAgent(compareRaw && compareRaw.courriels);
+                const p = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.courriels))
+                    ? (perimeterDto.production.courriels[0] || null)
+                    : null;
+                if (e) {
+                    performanceBlock.push("- Courriels : volume évalué -> clôture=" + Math.round(e.cloture || 0) + ", envoi_watt=" + Math.round(e.envoi_watt || 0) + ", reponse_directe=" + Math.round(e.reponse_directe || 0) + ".");
+                    if (cAgent) evolutionBlock.push("- Courriels : comparaison disponible (volumes informatifs seulement, ne pas conclure sur les écarts de volume).");
+                    if (p) benchmarkBlock.push("- Courriels : moyenne du périmètre disponible (volumes informatifs seulement).");
+                }
+            }
+
+            if (visibleChannels.watt) {
+                const eGlobal = (snap.metrics && snap.metrics.watt && snap.metrics.watt.global) ? snap.metrics.watt.global : null;
+                const eRows = (snap.metrics && snap.metrics.watt && Array.isArray(snap.metrics.watt.by_circuit))
+                    ? snap.metrics.watt.by_circuit.filter(r => r && r.hidden !== true)
+                    : [];
+                const cAgent = findByAgent(compareRaw && compareRaw.watt);
+                const pGlobal = (perimeterDto && perimeterDto.production && Array.isArray(perimeterDto.production.watt))
+                    ? (perimeterDto.production.watt[0] || null)
+                    : null;
+                if (eGlobal) {
+                    performanceBlock.push("- WATT : volume évalué -> clôture=" + Math.round(eGlobal.cloture_manuelle || 0) + ", reroutage=" + Math.round(eGlobal.reroutage_individuel || 0) + ", transfert=" + Math.round(eGlobal.transfert_prod || 0) + ".");
+                    if (cAgent) evolutionBlock.push("- WATT : comparaison disponible (volumes informatifs seulement, ne pas conclure sur les écarts de volume).");
+                    if (pGlobal) benchmarkBlock.push("- WATT : moyenne du périmètre disponible (volumes informatifs seulement).");
+                }
+                if (eRows.length > 0) {
+                    performanceBlock.push("  Circuits visibles :");
+                    for (let i = 0; i < eRows.length; i++) {
+                        const row = eRows[i];
+                        performanceBlock.push("   - " + (row.circuit || 'GLOBAL') + ": clôture=" + Math.round(row.cloture_manuelle || 0) + ", reroutage=" + Math.round(row.reroutage_individuel || 0) + ", transfert=" + Math.round(row.transfert_prod || 0));
+                    }
+                }
+            }
+
+            const rawSystemPrompt = this.appConfig.prompts && this.appConfig.prompts.review && this.appConfig.prompts.review.statsAnalysisSystem;
+            const systemPrompt = (rawSystemPrompt != null && String(rawSystemPrompt).trim() !== '')
+                ? String(rawSystemPrompt)
+                : this.getDefaultStatsAnalysisSystemPromptTemplate();
+
+            const userPrompt = []
+                .concat(contextBlock, [''])
+                .concat(performanceBlock, [''])
+                .concat(evolutionBlock, [''])
+                .concat(benchmarkBlock, [''])
+                .concat([
+                    "TACHE",
+                    "Rédige maintenant la synthèse manager (4 lignes max), factuelle, orientée action, sans commentaire sur les écarts de volume total."
+                ]);
+
+            return systemPrompt + '\n\n' + userPrompt.join('\n');
+        },
+
+        async copyStatsPromptToClipboard() {
+            if (!this.form || !this.form.stats_snapshot) {
+                this.notify("Importez d'abord les statistiques.", "error");
+                return;
+            }
+            try {
+                const prompt = await this.buildStatsPromptForAI();
+                try {
+                    await navigator.clipboard.writeText(prompt);
+                    this.bilanPromptGenerated = prompt;
+                    this.bilanPromptModalOpen = true;
+                    this.notify("Prompt copié ! Collez-le dans ChatGPT, Claude, etc.");
+                } catch (e) {
+                    this.bilanPromptGenerated = prompt;
+                    this.bilanPromptModalOpen = true;
+                    this.notify("Affichage du prompt (copie impossible). Utilisez le bouton Copier dans la modale.", "error");
+                }
+            } catch (e) {
+                this.notify(e.message || "Erreur génération prompt stats", "error");
+            }
+        },
+
+        async generateStatsAnalysisWithMistral() {
+            if (this._ensureCampaignNotClosed && this._ensureCampaignNotClosed()) return;
+            if (!this.form || !this.form.stats_snapshot) {
+                this.notify("Importez d'abord les statistiques.", "error");
+                return;
+            }
+            const apiKey = (typeof CONFIG_APP !== 'undefined' && CONFIG_APP.mistralApiKey) ? CONFIG_APP.mistralApiKey : '';
+            if (!apiKey || !apiKey.trim()) {
+                this.notify("Clé Mistral manquante. Renseignez CONFIG_APP.mistralApiKey dans config_app.js.", "error");
+                return;
+            }
+            if (!window.MistralBilan || typeof window.MistralBilan.generateComment !== 'function') {
+                this.notify("Module Mistral non chargé. Vérifiez que mistralBilan.js est inclus.", "error");
+                return;
+            }
+            this.isGeneratingStatsAnalysisAi = true;
+            try {
+                const prompt = await this.buildStatsPromptForAI();
+                const text = await window.MistralBilan.generateComment(prompt, CONFIG_APP.mistralApiKey);
+                this.form.stats_analysis_comment = (text || '').trim();
+                this.evalSaveStatus = 'Modifications...';
+                this.notify("Analyse des statistiques générée.");
+            } catch (e) {
+                this.notify(e.message || "Erreur Mistral", "error");
+            } finally {
+                this.isGeneratingStatsAnalysisAi = false;
+            }
         },
 
         async copyEvalCommentPromptToClipboard() {
@@ -2902,6 +3648,19 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 period_start: this.period_start || '',
                 period_end: this.period_end || ''
             };
+            if (this.campaignType === 'review') {
+                configData.stats_config = {
+                    channels: {
+                        phone: !!(this.statsConfig && this.statsConfig.channels && this.statsConfig.channels.phone),
+                        email: !!(this.statsConfig && this.statsConfig.channels && this.statsConfig.channels.email),
+                        watt: !!(this.statsConfig && this.statsConfig.channels && this.statsConfig.channels.watt)
+                    },
+                    eval_start: (this.statsConfig && this.statsConfig.eval_start) ? this.statsConfig.eval_start : '',
+                    eval_end: (this.statsConfig && this.statsConfig.eval_end) ? this.statsConfig.eval_end : '',
+                    compare_start: (this.statsConfig && this.statsConfig.compare_start) ? this.statsConfig.compare_start : '',
+                    compare_end: (this.statsConfig && this.statsConfig.compare_end) ? this.statsConfig.compare_end : ''
+                };
+            }
 
             if (includeAssignments) {
                 if (this.campaignAssignments) configData.assignments = this.campaignAssignments;
@@ -2954,9 +3713,116 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             }
         },
 
+        isStep1Valid() {
+            const name = (this.newCampaignName || '').trim();
+            if (!name) return false;
+            if (!this.selectedGrilleId || String(this.selectedGrilleId).trim() === '') return false;
+            const target = Number(this.targetEvaluations);
+            if (!Number.isFinite(target) || target < 1) return false;
+            if (!this.period_start || !this.period_end) return false;
+            const start = new Date(this.period_start);
+            const end = new Date(this.period_end);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+            if (start.getTime() > end.getTime()) return false;
+            if (this.campaignType === 'review') {
+                const channels = (this.statsConfig && this.statsConfig.channels) ? this.statsConfig.channels : {};
+                const hasAtLeastOneChannel = !!(channels.phone || channels.email || channels.watt);
+                if (!hasAtLeastOneChannel) return false;
+
+                if (!this.statsConfig.eval_start || !this.statsConfig.eval_end) return false;
+                const statsEvalStart = new Date(this.statsConfig.eval_start);
+                const statsEvalEnd = new Date(this.statsConfig.eval_end);
+                if (isNaN(statsEvalStart.getTime()) || isNaN(statsEvalEnd.getTime())) return false;
+                if (statsEvalStart.getTime() > statsEvalEnd.getTime()) return false;
+
+                if (!this.statsConfig.compare_start || !this.statsConfig.compare_end) return false;
+                const statsCompareStart = new Date(this.statsConfig.compare_start);
+                const statsCompareEnd = new Date(this.statsConfig.compare_end);
+                if (isNaN(statsCompareStart.getTime()) || isNaN(statsCompareEnd.getTime())) return false;
+                if (statsCompareStart.getTime() > statsCompareEnd.getTime()) return false;
+            }
+            return true;
+        },
+
+        isStep2Valid() {
+            return Array.isArray(this.selectedAgents) && this.selectedAgents.length > 0;
+        },
+
+        get filteredPoolAgents() {
+            let list = this.poolAgents || [];
+            if (this.poolFilterSite !== '' && this.poolFilterSite != null) {
+                const siteId = parseInt(this.poolFilterSite);
+                list = list.filter(a => parseInt(a.siteId) === siteId);
+            }
+            if (this.poolFilterSupervisor !== '' && this.poolFilterSupervisor != null) {
+                const mgrId = parseInt(this.poolFilterSupervisor);
+                list = list.filter(a => (a.managerId != null && parseInt(a.managerId) === mgrId));
+            }
+            if (this.poolFilterSearch && this.poolFilterSearch.trim() !== '') {
+                const q = this.poolFilterSearch.trim().toLowerCase();
+                list = list.filter(a => this.getAgentDisplayName(a).toLowerCase().includes(q));
+            }
+            return list;
+        },
+
+        get totalWeight() {
+            if (this.assignToManager) return this.selectedSupervisors.length * 100;
+            return this.selectedSupervisors.reduce((sum, id) => {
+                const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(id));
+                const weight = this.supervisorWeights[id] ?? sup?.default_weight ?? 100;
+                return sum + weight;
+            }, 0);
+        },
+
+        goToCampaignStep(step) {
+            const parsed = Number(step);
+            if (!Number.isFinite(parsed)) return;
+            this.campaignWizardStep = Math.max(1, Math.min(3, Math.trunc(parsed)));
+        },
+
+        onCampaignTypeChanged() {
+            // Poka-Yoke : un entretien qualitatif impose exactement 1 évaluation par agent.
+            const prevType = this.lastCampaignTypeForPokaYoke;
+            const isReview = this.campaignType === 'review';
+
+            this.assignToManager = isReview;
+            if (isReview) {
+                this.targetEvaluations = 1;
+                if (!this.statsEvaluatedPeriodDirty) {
+                    this.statsConfig.eval_start = this.period_start || '';
+                    this.statsConfig.eval_end = this.period_end || '';
+                }
+            } else if (prevType === 'review') {
+                // Quand l'utilisateur repasse en scoring, on restaure une valeur par défaut.
+                this.targetEvaluations = 3;
+            }
+            this.lastCampaignTypeForPokaYoke = this.campaignType;
+        },
+
+        async nextCampaignStep() {
+            if (this.campaignWizardStep === 1 && !this.isStep1Valid()) {
+                this.notify("Renseignez les champs requis de l'étape 1.", "error");
+                return;
+            }
+            if (this.campaignWizardStep === 2 && !this.isStep2Valid()) {
+                this.notify("Sélectionnez au moins un agent.", "error");
+                return;
+            }
+            if (this.campaignWizardStep === 2) {
+                await this.proceedToAssignments();
+                return;
+            }
+            this.goToCampaignStep(this.campaignWizardStep + 1);
+        },
+
+        prevCampaignStep() {
+            this.goToCampaignStep(this.campaignWizardStep - 1);
+        },
+
         startNewCampaign() {
             this.resetCampaignForm();
             this.adminShowCreateForm = true;
+            this.campaignWizardStep = 1;
             this.selectedCampaignForAdmin = 'new';
         },
 
@@ -2969,6 +3835,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 this.newCampaignName = folderName;
                 this.isEditingCampaign = true;
                 this.adminShowCreateForm = false;
+                this.campaignWizardStep = 1;
                 this.selectedCampaignForAdmin = folderName;
                 this.selectedAgents = [];
                 try {
@@ -2989,7 +3856,40 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     }
                     this.period_start = content.period_start || '';
                     this.period_end = content.period_end || '';
-                } catch (e) { this.targetEvaluations = 3; this.selectedGrilleId = 'default'; this.campaignType = 'scoring'; }
+                    const rawStatsConfig = (content && content.stats_config && typeof content.stats_config === 'object') ? content.stats_config : {};
+                    const rawChannels = (rawStatsConfig.channels && typeof rawStatsConfig.channels === 'object') ? rawStatsConfig.channels : {};
+                    this.statsConfig = {
+                        channels: {
+                            phone: (rawChannels.phone !== undefined) ? !!rawChannels.phone : true,
+                            email: (rawChannels.email !== undefined) ? !!rawChannels.email : true,
+                            watt: (rawChannels.watt !== undefined) ? !!rawChannels.watt : true
+                        },
+                        eval_start: rawStatsConfig.eval_start || content.period_start || '',
+                        eval_end: rawStatsConfig.eval_end || content.period_end || '',
+                        compare_start: rawStatsConfig.compare_start || '',
+                        compare_end: rawStatsConfig.compare_end || ''
+                    };
+                    this.statsEvaluatedPeriodDirty = false;
+                } catch (e) {
+                    this.targetEvaluations = 3;
+                    this.selectedGrilleId = 'default';
+                    this.campaignType = 'scoring';
+                    this.statsConfig = {
+                        channels: { phone: true, email: true, watt: true },
+                        eval_start: '',
+                        eval_end: '',
+                        compare_start: '',
+                        compare_end: ''
+                    };
+                    this.statsEvaluatedPeriodDirty = false;
+                }
+
+                // Poka-Yoke : forcer la valeur cible si entretien qualitatif.
+                this.lastCampaignTypeForPokaYoke = this.campaignType;
+                if (this.campaignType === 'review') {
+                    this.assignToManager = true;
+                    this.targetEvaluations = 1;
+                }
                 if (typeof window.HQApp !== 'undefined' && window.HQApp.ScrollView) window.HQApp.ScrollView.scrollToTop();
             } catch (e) { console.error(e); this.notify("Erreur lors du chargement de la campagne.", "error"); }
         },
@@ -3004,8 +3904,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         },
 
         async saveCampaignFromStep1() {
-            if (!this.newCampaignName || this.selectedAgents.length === 0) {
-                return this.notify("Nom de campagne et agents requis.", "error");
+            if (!this.newCampaignName || !String(this.newCampaignName).trim()) {
+                return this.notify("Nom de campagne requis.", "error");
             }
             if (!this.campagnesHandle || !fsManager) {
                 return this.notify("Accès au dossier campagnes requis.", "error");
@@ -3030,46 +3930,225 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             }
         },
 
+        updateSupervisorSelection() {
+            this.selectedSupervisors = (this.selectedSupervisors || []).map(id => Number(id));
+            this.selectedSupervisors.forEach(id => {
+                if (!this.assignments[id]) this.assignments[id] = [];
+                if (!this.forcedAssignments[id]) this.forcedAssignments[id] = [];
+            });
+        },
+
+        isForcedAssigned(supId, agentId) {
+            const sid = Number(supId);
+            const aid = Number(agentId);
+            const forced = this.forcedAssignments && this.forcedAssignments[sid];
+            if (!Array.isArray(forced)) return false;
+            return forced.map(Number).includes(aid);
+        },
+
+        assignAgentToSupervisor(agentId, supId) {
+            if (!supId || !this.selectedSupervisors.includes(supId)) return;
+            const idx = this.poolAgents.findIndex(a => a.id === agentId);
+            if (idx === -1) return;
+            this.poolAgents.splice(idx, 1);
+            if (!this.assignments[supId]) this.assignments[supId] = [];
+            if (!this.assignments[supId].includes(agentId)) this.assignments[supId].push(agentId);
+            if (!this.forcedAssignments[supId]) this.forcedAssignments[supId] = [];
+            if (!this.forcedAssignments[supId].includes(agentId)) this.forcedAssignments[supId].push(agentId);
+        },
+
+        moveAgentToPool(agentId, supId) {
+            const id = parseInt(agentId);
+            const sup = parseInt(supId);
+            if (!this.assignments[sup]) return;
+            this.assignments[sup] = this.assignments[sup].filter(a => a !== id);
+            if (this.forcedAssignments[sup]) this.forcedAssignments[sup] = this.forcedAssignments[sup].filter(a => a !== id);
+            const agent = this.getAgentById(id);
+            if (agent && !this.poolAgents.some(a => a.id === id)) this.poolAgents.push(agent);
+        },
+
+        reassignAgent(agentId, fromSupId, toSupIdOrPool) {
+            const id = parseInt(agentId);
+            const from = parseInt(fromSupId);
+            if (!toSupIdOrPool || toSupIdOrPool === 'pool') {
+                this.moveAgentToPool(id, from);
+                return;
+            }
+            const to = parseInt(toSupIdOrPool);
+            if (to === from) return;
+            if (!this.assignments[from]) return;
+            this.assignments[from] = this.assignments[from].filter(a => a !== id);
+            if (this.forcedAssignments[from]) this.forcedAssignments[from] = this.forcedAssignments[from].filter(a => a !== id);
+            if (!this.assignments[to]) this.assignments[to] = [];
+            if (!this.assignments[to].includes(id)) this.assignments[to].push(id);
+            if (!this.forcedAssignments[to]) this.forcedAssignments[to] = [];
+            if (!this.forcedAssignments[to].includes(id)) this.forcedAssignments[to].push(id);
+        },
+
+        updatePoolFromAssignments() {
+            const assignedIds = Object.values(this.assignments || {}).flat().map(id => Number(id));
+            this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id) && !assignedIds.includes(a.id));
+        },
+
+        getQuota(supId) {
+            if (this.assignToManager) return (this.assignments[supId] || []).length;
+            if (this.campaignAgents.length === 0) return 0;
+            const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(supId));
+            const weight = this.supervisorWeights[supId] ?? sup?.default_weight ?? 100;
+            if (this.totalWeight === 0) return 0;
+            return Math.round((weight / this.totalWeight) * this.campaignAgents.length);
+        },
+
+        calculateAutoAssignments() {
+            if (this.assignToManager) return;
+            if (this.selectedSupervisors.length === 0) {
+                return this.notify("Sélectionnez au moins un superviseur", "error");
+            }
+            const result = this.calculateAssignments(
+                this.selectedSupervisors.map(id => {
+                    const sup = this.supervisors.find(s => parseInt(s.id) === parseInt(id));
+                    return {
+                        id: parseInt(id),
+                        nom: sup ? sup.nom : 'Inconnu',
+                        weight: this.supervisorWeights[id] ?? sup?.default_weight ?? 100
+                    };
+                }),
+                this.poolAgents,
+                this.forcedAssignments,
+                this.assignments
+            );
+
+            Object.entries(result.assignments).forEach(([supId, agentIds]) => {
+                const id = parseInt(supId);
+                if (!this.assignments[id]) this.assignments[id] = [];
+                agentIds.forEach(aid => {
+                    if (!this.assignments[id].includes(aid)) this.assignments[id].push(aid);
+                });
+            });
+            this.poolAgents = [];
+            if (result.conflicts.length > 0) this.notify(`${result.conflicts.length} conflit(s) détecté(s)`, "error");
+            else this.notify("Répartition effectuée avec succès !");
+        },
+
+        resetAssignments() {
+            if (!confirm("Réinitialiser toutes les assignations ?")) return;
+            this.assignments = {};
+            this.forcedAssignments = {};
+            this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
+            this.notify("Assignations réinitialisées");
+        },
+
+        async _persistAssignments() {
+            const sanitizedName = repository.sanitizeDirectoryName(this.newCampaignName.trim());
+            const dirHandle = this.currentCampaignHandle
+                ? this.currentCampaignHandle
+                : await this.campagnesHandle.getDirectoryHandle(sanitizedName, { create: true });
+
+            const assignmentsData = {};
+            this.selectedSupervisors.forEach(supId => {
+                const id = parseInt(supId);
+                const sup = this.supervisors.find(s => parseInt(s.id) === id);
+                assignmentsData[supId] = {
+                    weight: this.supervisorWeights[id] ?? sup?.default_weight ?? 100,
+                    agent_ids: this.assignments[id] || [],
+                    forced_ids: this.forcedAssignments[id] || []
+                };
+            });
+
+            this.campaignAssignments = assignmentsData;
+            await this.saveCampaignConfig(dirHandle, true);
+        },
+
+        async saveAndFinalizeCampaign() {
+            if (this.campaignAgents.length === 0) {
+                return this.notify("Aucun agent dans la campagne", "error");
+            }
+            if (this.poolAgents.length > 0 && !confirm(`${this.poolAgents.length} agent(s) non assigné(s). Enregistrer quand même ?`)) {
+                return;
+            }
+            if (!this.campagnesHandle || !fsManager) {
+                return this.notify("Accès au dossier campagnes requis.", "error");
+            }
+            try {
+                await this._persistAssignments();
+                await this.refreshData();
+                this.notify("Campagne enregistrée.");
+                this.resetCampaignForm();
+            } catch (e) {
+                console.error(e);
+                this.notify("Erreur lors de l'enregistrement final.", "error");
+            }
+        },
+
         async proceedToAssignments() {
             if (!this.newCampaignName || this.selectedAgents.length === 0) {
                 return this.notify("Nom de campagne et agents requis.", "error");
             }
-
-            const campaignData = {
-                name: repository.sanitizeDirectoryName(this.newCampaignName.trim()),
-                agents: this.selectedAgents.map(id => Number(id)),
-                targetEvals: parseInt(this.targetEvaluations) || 3,
-                isEditing: this.isEditingCampaign,
-                assignToManager: !!this.assignToManager
-            };
-
-            // Si édition, charger les assignments existantes
-            if (fsManager && this.isEditingCampaign && this.currentCampaignHandle) {
-                try {
-                    const config = await fsManager.readCampaignConfig(this.currentCampaignHandle);
-                    if (config.assignments) campaignData.existingAssignments = config.assignments;
-                    if (config.participating_supervisors) campaignData.participatingSupervisors = config.participating_supervisors;
-                } catch (e) {
-                    console.log("Pas d'assignations existantes");
-                }
-            }
-
-            // Sauvegarder la campagne sur disque avant de passer à la répartition
             if (!this.campagnesHandle) {
                 return this.notify("Accès au dossier campagnes requis.", "error");
             }
+            const campaignName = repository.sanitizeDirectoryName(this.newCampaignName.trim());
             try {
                 const dirHandle = this.isEditingCampaign && this.currentCampaignHandle
                     ? this.currentCampaignHandle
-                    : await this.campagnesHandle.getDirectoryHandle(campaignData.name, { create: true });
+                    : await this.campagnesHandle.getDirectoryHandle(campaignName, { create: true });
                 await this.saveCampaignConfig(dirHandle, false);
+                if (!this.currentCampaignHandle) this.currentCampaignHandle = dirHandle;
+
+                this.campaignAgents = this.selectedAgents.map(id => Number(id));
+                this.assignments = {};
+                this.forcedAssignments = {};
+                this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
+                this.poolFilterSite = '';
+                this.poolFilterSearch = '';
+                this.poolFilterSupervisor = '';
+                this.selectedSupervisors = [];
+                if (!this.supervisorWeights) this.supervisorWeights = {};
+
+                let config = null;
+                try {
+                    config = await fsManager.readCampaignConfig(dirHandle);
+                } catch (e) { config = null; }
+
+                if (config && config.assignments && typeof config.assignments === 'object') {
+                    Object.entries(config.assignments).forEach(([supId, block]) => {
+                        const id = parseInt(supId);
+                        const agentIds = block && block.agent_ids ? block.agent_ids : [];
+                        this.assignments[id] = agentIds.map(x => parseInt(x));
+                        this.forcedAssignments[id] = Array.isArray(block?.forced_ids) ? block.forced_ids.map(x => parseInt(x)) : [];
+                        if (block && typeof block.weight === 'number') this.supervisorWeights[id] = block.weight;
+                    });
+                }
+
+                if (config && Array.isArray(config.participating_supervisors) && config.participating_supervisors.length > 0) {
+                    this.selectedSupervisors = config.participating_supervisors.map(id => parseInt(id));
+                } else if (this.assignToManager) {
+                    const managerIds = [...new Set(this.poolAgents.map(a => a.managerId).filter(id => id != null && id !== ''))];
+                    this.selectedSupervisors = managerIds.map(id => parseInt(id));
+                } else if (Object.keys(this.assignments).length > 0) {
+                    this.selectedSupervisors = Object.keys(this.assignments).map(k => parseInt(k));
+                }
+
+                if (this.assignToManager) {
+                    this.selectedSupervisors.forEach(id => {
+                        if (!this.assignments[id]) this.assignments[id] = [];
+                        if (!this.forcedAssignments[id]) this.forcedAssignments[id] = [];
+                    });
+                    this.poolAgents.forEach(agent => {
+                        const mid = agent.managerId != null ? parseInt(agent.managerId) : null;
+                        if (mid != null && this.assignments[mid] && !this.assignments[mid].includes(agent.id)) {
+                            this.assignments[mid].push(agent.id);
+                        }
+                    });
+                }
+
+                this.updateSupervisorSelection();
+                this.updatePoolFromAssignments();
+                this.campaignWizardStep = 3;
             } catch (e) {
                 console.error(e);
-                return this.notify("Erreur lors de l'enregistrement de la campagne.", "error");
+                this.notify("Erreur lors du chargement de la répartition.", "error");
             }
-
-            sessionStorage.setItem('campaignData', JSON.stringify(campaignData));
-            window.location.href = 'admin-repartition.html';
         },
 
         cancelEdit() { this.resetCampaignForm(); },
@@ -3077,14 +4156,34 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.newCampaignName = '';
             this.targetEvaluations = 3;
             this.selectedAgents = [];
+            this.campaignAgents = [];
+            this.poolAgents = [];
+            this.assignments = {};
+            this.forcedAssignments = {};
+            this.poolFilterSite = '';
+            this.poolFilterSearch = '';
+            this.poolFilterSupervisor = '';
+            this.selectedSupervisors = [];
+            this.supervisorWeights = {};
+            this.campaignAssignments = {};
             this.selectedGrilleId = 'default';
             this.campaignType = 'scoring';
+            this.lastCampaignTypeForPokaYoke = 'scoring';
             this.period_start = '';
             this.period_end = '';
+            this.statsConfig = {
+                channels: { phone: true, email: true, watt: true },
+                eval_start: '',
+                eval_end: '',
+                compare_start: '',
+                compare_end: ''
+            };
+            this.statsEvaluatedPeriodDirty = false;
             this.assignToManager = false;
             this.isEditingCampaign = false;
             this.currentCampaignHandle = null;
             this.adminShowCreateForm = false;
+            this.campaignWizardStep = 1;
             this.selectedCampaignForAdmin = null;
         },
 

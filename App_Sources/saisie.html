@@ -193,6 +193,242 @@
                 </aside>
 
                 <section class="col-span-12 lg:col-span-8 flex flex-col gap-8">
+                    <div x-show="campaignConfig && campaignConfig.campaign_type === 'review' && (((campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.phone) || (campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.email) || (campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.watt)))"
+                         class="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-4">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">Dashboard Stats Manager</h3>
+                                <p class="text-xs text-slate-500 mt-2"
+                                   x-text="form.stats_snapshot ? ('Période évaluée : du ' + formatDateToFR(form.stats_snapshot.period.eval_start) + ' au ' + formatDateToFR(form.stats_snapshot.period.eval_end)) : ('Période évaluée : du ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_start) ? campaignConfig.stats_config.eval_start : campaignConfig.period_start) + ' au ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_end) ? campaignConfig.stats_config.eval_end : campaignConfig.period_end))"></p>
+                            </div>
+                            <span x-show="form.stats_snapshot && form.stats_snapshot.imported_at"
+                                  class="text-[10px] text-slate-400 font-bold uppercase tracking-widest"
+                                  x-text="'Snapshot: ' + new Date(form.stats_snapshot.imported_at).toLocaleString('fr-FR')"></span>
+                        </div>
+
+                        <template x-if="!form.stats_snapshot">
+                            <button type="button"
+                                    @click="importAgentStats()"
+                                    :disabled="isImportingStats || isCampaignClosed"
+                                    class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl shadow-lg transition-all text-sm">
+                                <span x-text="isImportingStats ? 'Import des statistiques...' : 'Importer les statistiques de la période évaluée'"></span>
+                            </button>
+                        </template>
+
+                        <template x-if="form.stats_snapshot">
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
+                                    <!-- Téléphone (global + by_offer) -->
+                                    <div x-show="form.stats_snapshot.channels && form.stats_snapshot.channels.phone"
+                                         :class="form.stats_snapshot.metrics && form.stats_snapshot.metrics.telephone && form.stats_snapshot.metrics.telephone.hidden ? 'opacity-50' : ''"
+                                         class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <h4 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Téléphone</h4>
+                                            <label class="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer">
+                                                <input type="checkbox"
+                                                       :checked="!(form.stats_snapshot.metrics.telephone.hidden)"
+                                                       @change="form.stats_snapshot.metrics.telephone.hidden = !$event.target.checked"
+                                                       :disabled="isCampaignClosed"
+                                                       class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                Inclure
+                                            </label>
+                                        </div>
+
+                                        <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                                            <p><span class="font-bold">Appels:</span> <span x-text="form.stats_snapshot.metrics.telephone.global.appels_traites || 0"></span></p>
+                                            <p><span class="font-bold">DMT:</span> <span x-text="Math.round(Number(form.stats_snapshot.metrics.telephone.global.dmt || 0))"></span></p>
+                                            <p><span class="font-bold">Transferts:</span> <span x-text="form.stats_snapshot.metrics.telephone.global.transferts || 0"></span></p>
+                                        </div>
+
+                                        <div class="mt-3">
+                                            <div class="flex items-center justify-between gap-3 mb-2">
+                                                <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Offres</span>
+                                                <span class="text-[10px] font-bold text-slate-400" x-text="(form.stats_snapshot.metrics.telephone.by_offer || []).filter(r => !r.hidden).length + ' / ' + (form.stats_snapshot.metrics.telephone.by_offer || []).length"></span>
+                                            </div>
+
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full text-left text-[10px] min-w-[720px] border border-slate-200 rounded-xl overflow-hidden">
+                                                    <thead class="bg-white">
+                                                        <tr class="text-slate-500 uppercase font-black tracking-widest">
+                                                            <th class="px-2 py-1 w-[60px]">Inclure</th>
+                                                            <th class="px-2 py-1">Offre</th>
+                                                            <th class="px-2 py-1">Appels</th>
+                                                            <th class="px-2 py-1">DMT</th>
+                                                            <th class="px-2 py-1">DMC</th>
+                                                            <th class="px-2 py-1">DMMG</th>
+                                                            <th class="px-2 py-1">DMPA</th>
+                                                            <th class="px-2 py-1">Identif.</th>
+                                                            <th class="px-2 py-1">Rép. imm.</th>
+                                                            <th class="px-2 py-1">Transf.</th>
+                                                            <th class="px-2 py-1">Consul.</th>
+                                                            <th class="px-2 py-1">RONA</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="bg-white divide-y divide-slate-100">
+                                                        <template x-for="row in (form.stats_snapshot.metrics.telephone.by_offer || [])" :key="row.offre">
+                                                            <tr :class="row.hidden ? 'opacity-50' : ''" class="align-top">
+                                                                <td class="px-2 py-1">
+                                                                    <input type="checkbox"
+                                                                           :checked="!row.hidden"
+                                                                           @change="row.hidden = !$event.target.checked"
+                                                                           :disabled="isCampaignClosed"
+                                                                           class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                                </td>
+                                                                <td class="px-2 py-1 font-bold text-slate-700" x-text="row.offre"></td>
+                                                                <td class="px-2 py-1" x-text="row.appels_traites || 0"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.dmt || 0))"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.dmc || 0))"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.dmmg || 0))"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.dmpa || 0))"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.identifications || 0)) + '%'"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.reponses_immediates || 0)) + '%'"></td>
+                                                                <td class="px-2 py-1" x-text="row.transferts || 0"></td>
+                                                                <td class="px-2 py-1" x-text="row.consultations || 0"></td>
+                                                                <td class="px-2 py-1" x-text="Math.round(Number(row.rona || 0))"></td>
+                                                            </tr>
+                                                        </template>
+                                                        <template x-if="(form.stats_snapshot.metrics.telephone.by_offer || []).length === 0">
+                                                            <tr>
+                                                                <td colspan="12" class="px-2 py-3 text-center text-[10px] text-slate-400 italic">Aucune offre</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Courriels (global only) -->
+                                    <div x-show="form.stats_snapshot.channels && form.stats_snapshot.channels.email"
+                                         :class="form.stats_snapshot.metrics && form.stats_snapshot.metrics.courriels && form.stats_snapshot.metrics.courriels.hidden ? 'opacity-50' : ''"
+                                         class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <h4 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Courriels</h4>
+                                            <label class="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer">
+                                                <input type="checkbox"
+                                                       :checked="!(form.stats_snapshot.metrics.courriels.hidden)"
+                                                       @change="form.stats_snapshot.metrics.courriels.hidden = !$event.target.checked"
+                                                       :disabled="isCampaignClosed"
+                                                       class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                Inclure
+                                            </label>
+                                        </div>
+
+                                        <div class="mt-3 space-y-1 text-xs text-slate-600">
+                                            <p><span class="font-bold">Clôture:</span> <span x-text="form.stats_snapshot.metrics.courriels.global.cloture || 0"></span></p>
+                                            <p><span class="font-bold">Envoi WATT:</span> <span x-text="form.stats_snapshot.metrics.courriels.global.envoi_watt || 0"></span></p>
+                                            <p><span class="font-bold">Réponse:</span> <span x-text="form.stats_snapshot.metrics.courriels.global.reponse_directe || 0"></span></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- WATT (global + by_circuit) -->
+                                    <div x-show="form.stats_snapshot.channels && form.stats_snapshot.channels.watt"
+                                         :class="form.stats_snapshot.metrics && form.stats_snapshot.metrics.watt && form.stats_snapshot.metrics.watt.hidden ? 'opacity-50' : ''"
+                                         class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <h4 class="text-[11px] font-black text-slate-600 uppercase tracking-widest">WATT</h4>
+                                            <label class="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest cursor-pointer">
+                                                <input type="checkbox"
+                                                       :checked="!(form.stats_snapshot.metrics.watt.hidden)"
+                                                       @change="form.stats_snapshot.metrics.watt.hidden = !$event.target.checked"
+                                                       :disabled="isCampaignClosed"
+                                                       class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                Inclure
+                                            </label>
+                                        </div>
+
+                                        <div class="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                                            <p><span class="font-bold">Clôture:</span> <span x-text="form.stats_snapshot.metrics.watt.global.cloture_manuelle || 0"></span></p>
+                                            <p><span class="font-bold">Reroutage:</span> <span x-text="form.stats_snapshot.metrics.watt.global.reroutage_individuel || 0"></span></p>
+                                            <p class="col-span-2"><span class="font-bold">Transfert prod:</span> <span x-text="form.stats_snapshot.metrics.watt.global.transfert_prod || 0"></span></p>
+                                        </div>
+
+                                        <div class="mt-3">
+                                            <div class="flex items-center justify-between gap-3 mb-2">
+                                                <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Circuits</span>
+                                                <span class="text-[10px] font-bold text-slate-400" x-text="(form.stats_snapshot.metrics.watt.by_circuit || []).filter(r => !r.hidden).length + ' / ' + (form.stats_snapshot.metrics.watt.by_circuit || []).length"></span>
+                                            </div>
+
+                                            <div class="overflow-x-auto">
+                                                <table class="w-full text-left text-[10px] min-w-[520px] border border-slate-200 rounded-xl overflow-hidden">
+                                                    <thead class="bg-white">
+                                                        <tr class="text-slate-500 uppercase font-black tracking-widest">
+                                                            <th class="px-2 py-1 w-[70px]">Inclure</th>
+                                                            <th class="px-2 py-1">Circuit</th>
+                                                            <th class="px-2 py-1">Clôture</th>
+                                                            <th class="px-2 py-1">Reroutage</th>
+                                                            <th class="px-2 py-1">Transfert</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="bg-white divide-y divide-slate-100">
+                                                        <template x-for="row in (form.stats_snapshot.metrics.watt.by_circuit || [])" :key="row.circuit">
+                                                            <tr :class="row.hidden ? 'opacity-50' : ''">
+                                                                <td class="px-2 py-1">
+                                                                    <input type="checkbox"
+                                                                           :checked="!row.hidden"
+                                                                           @change="row.hidden = !$event.target.checked"
+                                                                           :disabled="isCampaignClosed"
+                                                                           class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                                                                </td>
+                                                                <td class="px-2 py-1 font-bold text-slate-700" x-text="row.circuit"></td>
+                                                                <td class="px-2 py-1" x-text="row.cloture_manuelle || 0"></td>
+                                                                <td class="px-2 py-1" x-text="row.reroutage_individuel || 0"></td>
+                                                                <td class="px-2 py-1" x-text="row.transfert_prod || 0"></td>
+                                                            </tr>
+                                                        </template>
+                                                        <template x-if="(form.stats_snapshot.metrics.watt.by_circuit || []).length === 0">
+                                                            <tr>
+                                                                <td colspan="5" class="px-2 py-3 text-center text-[10px] text-slate-400 italic">Aucun circuit</td>
+                                                            </tr>
+                                                        </template>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <div class="flex justify-end">
+                                    <button type="button"
+                                            @click="importAgentStats()"
+                                            :disabled="isImportingStats || isCampaignClosed"
+                                            class="bg-slate-100 hover:bg-slate-200 disabled:bg-slate-200 disabled:cursor-not-allowed text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors text-xs uppercase tracking-wider">
+                                        <span x-text="isImportingStats ? 'Actualisation...' : 'Actualiser les statistiques'"></span>
+                                    </button>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Analyse des statistiques</label>
+                                    <textarea x-model="form.stats_analysis_comment"
+                                              :readonly="isCampaignClosed"
+                                              rows="4"
+                                              class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                              placeholder="Analyse libre du manager (constats, écarts, hypothèses, actions)..."></textarea>
+                                </div>
+
+                                <div class="flex flex-col sm:flex-row gap-2" x-show="!isCampaignClosed">
+                                    <button type="button"
+                                            x-show="!appConfig.promptGenerateButtonHidden"
+                                            @click="copyStatsPromptToClipboard()"
+                                            :disabled="!form.stats_snapshot"
+                                            class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                        <span>✨</span> Générer le prompt IA
+                                    </button>
+                                    <button type="button"
+                                            x-show="(appConfig.mistralApiKey || '').trim() && !appConfig.mistralDisabled"
+                                            @click="generateStatsAnalysisWithMistral()"
+                                            :disabled="!form.stats_snapshot || isGeneratingStatsAnalysisAi"
+                                            class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+                                        <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                        <span x-text="isGeneratingStatsAnalysisAi ? 'Génération...' : `Générer une analyse avec l'IA`"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
                     <template x-for="(section, index) in (grid || [])" :key="section.id || index">
                         <div class="bg-white rounded-3xl shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
                             

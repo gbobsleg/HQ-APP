@@ -19,7 +19,7 @@
     <script src="js/AppOrchestrator.js"></script>
     <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
 </head>
-<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init(); initBilanPromptEdit(); initEvalCommentPromptEdit(); initReviewBilanPromptEdit()">
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init(); initBilanPromptEdit(); initEvalCommentPromptEdit(); initReviewBilanPromptEdit(); initStatsAnalysisSystemPromptEdit()">
     <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
 
     <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-4xl mx-auto py-10 px-6">
@@ -139,6 +139,23 @@
                 <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                     <label class="block text-xs font-black text-slate-400 uppercase mb-2">Template (synthèse bilan entretien)</label>
                     <textarea x-model="reviewBilanSynthesisEdit" rows="16" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 resize-y" placeholder="Template du prompt…"></textarea>
+                </div>
+
+                <div class="mt-10">
+                    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+                        <div>
+                            <h2 class="text-xl font-black text-indigo-900 mt-2">Prompt d'Analyse des Statistiques (IA)</h2>
+                            <p class="text-slate-500 text-sm mt-1">System Prompt utilisé pour générer l'analyse IA des statistiques SPQR.</p>
+                        </div>
+                        <div class="flex gap-3">
+                            <button @click="resetStatsAnalysisSystemPromptTemplate()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-3 rounded-2xl transition-all text-sm">Restaurer le défaut</button>
+                            <button @click="saveStatsAnalysisSystemPromptTemplate()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">Sauvegarder</button>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
+                        <label class="block text-xs font-black text-slate-400 uppercase mb-2">Template (system prompt analyse stats)</label>
+                        <textarea x-model="statsAnalysisSystemPromptEdit" rows="18" class="w-full bg-slate-50 border border-slate-200 p-4 rounded-xl font-mono text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 resize-y" placeholder="Template du prompt…"></textarea>
+                    </div>
                 </div>
             </div>
         </div>

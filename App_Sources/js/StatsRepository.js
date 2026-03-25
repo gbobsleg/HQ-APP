@@ -93,8 +93,7 @@
         { production: 'Réponses immédiates', internal: 'reponses_immediates' },
         { production: 'Transferts', internal: 'transferts' },
         { production: 'Consultations', internal: 'consultations' },
-        { production: 'RONA', internal: 'rona' },
-        { production: 'Taux transfo', internal: 'taux_transfo' }
+        { production: 'RONA', internal: 'rona' }
     ];
 
     var COLUMN_MAPPING_COURRIELS = [
@@ -294,23 +293,20 @@
         var groupsByAgentDate = {};
         var groupsByAgentOfferDate = {};
         var weightKey, sumKey, volumeKey;
-        var r, key, keyOffer, g, go, agentId, dateStr, offre, vol, dmt, taux, volTraite, delai, tauxConf, taches, duree;
+        var r, key, keyOffer, g, go, agentId, dateStr, offre, vol, dmt, volTraite, delai, tauxConf, taches, duree;
         var dmc, dmmg, dmpa, idents, repImm, transf, cons, rona;
         var emptyTelGroup = function(id, date, offreName) {
             return {
                 agentId: id, date: date, offre: offreName || 'GLOBAL',
                 appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0,
-                taux_transfoSum: 0, taux_transfoWeight: 0,
                 dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0,
                 identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0
             };
         };
-        var addTelValues = function(grp, vol, dmt, taux, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona) {
+        var addTelValues = function(grp, vol, dmt, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona) {
             grp.appels_traites += vol;
             grp.dmtSumSeconds += dmt * vol;
             grp.dmtWeight += vol;
-            grp.taux_transfoSum += taux * vol;
-            grp.taux_transfoWeight += vol;
             grp.dmcSumSeconds += dmc * vol;
             grp.dmmgSumSeconds += dmmg * vol;
             grp.dmpaSumSeconds += dmpa * vol;
@@ -342,7 +338,6 @@
                 go = groupsByAgentOfferDate[keyOffer];
                 vol = safeParseNumber(rows[r].appels_traites);
                 dmt = safeParseNumber(rows[r].dmt);
-                taux = safeParseNumber(rows[r].taux_transfo);
                 dmc = safeParseNumber(rows[r].dmc);
                 dmmg = safeParseNumber(rows[r].dmmg);
                 dmpa = safeParseNumber(rows[r].dmpa);
@@ -352,8 +347,8 @@
                 cons = safeParseNumber(rows[r].consultations);
                 rona = safeParseNumber(rows[r].rona);
 
-                addTelValues(g, vol, dmt, taux, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona);
-                addTelValues(go, vol, dmt, taux, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona);
+                addTelValues(g, vol, dmt, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona);
+                addTelValues(go, vol, dmt, dmc, dmmg, dmpa, idents, repImm, transf, cons, rona);
             }
         } else if (sourceKey === 'courriels') {
             volumeKey = 'cloture';
@@ -407,7 +402,7 @@
             var aid = grp.agentId;
             if (!byAgent[aid]) {
                 if (sourceKey === 'telephone') {
-                    byAgent[aid] = { agentId: aid, offres: {}, appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0, taux_transfoSum: 0, taux_transfoWeight: 0, dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0, identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0 };
+                    byAgent[aid] = { agentId: aid, offres: {}, appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0, dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0, identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0 };
                 } else if (sourceKey === 'courriels') {
                     byAgent[aid] = { agentId: aid, cloture: 0, envoi_watt: 0, reponse_directe: 0 };
                 } else {
@@ -419,8 +414,6 @@
                 agg.appels_traites += grp.appels_traites;
                 agg.dmtSumSeconds += grp.dmtSumSeconds;
                 agg.dmtWeight += grp.dmtWeight;
-                agg.taux_transfoSum += grp.taux_transfoSum;
-                agg.taux_transfoWeight += grp.taux_transfoWeight;
                 agg.dmcSumSeconds += grp.dmcSumSeconds;
                 agg.dmmgSumSeconds += grp.dmmgSumSeconds;
                 agg.dmpaSumSeconds += grp.dmpaSumSeconds;
@@ -451,15 +444,13 @@
                 if (byAgent[oaid]) {
                     if (!byAgent[oaid].offres[ooffre]) {
                         byAgent[oaid].offres[ooffre] = {
-                            offre: ooffre, appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0, taux_transfoSum: 0, taux_transfoWeight: 0, dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0, identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0
+                            offre: ooffre, appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0, dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0, identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0
                         };
                     }
                     var oagg = byAgent[oaid].offres[ooffre];
                     oagg.appels_traites += ogrp.appels_traites;
                     oagg.dmtSumSeconds += ogrp.dmtSumSeconds;
                     oagg.dmtWeight += ogrp.dmtWeight;
-                    oagg.taux_transfoSum += ogrp.taux_transfoSum;
-                    oagg.taux_transfoWeight += ogrp.taux_transfoWeight;
                     oagg.dmcSumSeconds += ogrp.dmcSumSeconds;
                     oagg.dmmgSumSeconds += ogrp.dmmgSumSeconds;
                     oagg.dmpaSumSeconds += ogrp.dmpaSumSeconds;
@@ -482,7 +473,6 @@
                     agentId: aggItem.agentId,
                     dmt: aggItem.dmtWeight > 0 ? aggItem.dmtSumSeconds / aggItem.dmtWeight : 0,
                     appels_traites: aggItem.appels_traites,
-                    taux_transfo: aggItem.taux_transfoWeight > 0 ? aggItem.taux_transfoSum / aggItem.taux_transfoWeight : 0,
                     dmc: aggItem.dmtWeight > 0 ? aggItem.dmcSumSeconds / aggItem.dmtWeight : 0,
                     dmmg: aggItem.dmtWeight > 0 ? aggItem.dmmgSumSeconds / aggItem.dmtWeight : 0,
                     dmpa: aggItem.dmtWeight > 0 ? aggItem.dmpaSumSeconds / aggItem.dmtWeight : 0,
@@ -501,7 +491,6 @@
                         offre: oaggItem.offre,
                         dmt: oaggItem.dmtWeight > 0 ? oaggItem.dmtSumSeconds / oaggItem.dmtWeight : 0,
                         appels_traites: oaggItem.appels_traites,
-                        taux_transfo: oaggItem.taux_transfoWeight > 0 ? oaggItem.taux_transfoSum / oaggItem.taux_transfoWeight : 0,
                         dmc: oaggItem.dmtWeight > 0 ? oaggItem.dmcSumSeconds / oaggItem.dmtWeight : 0,
                         dmmg: oaggItem.dmtWeight > 0 ? oaggItem.dmmgSumSeconds / oaggItem.dmtWeight : 0,
                         dmpa: oaggItem.dmtWeight > 0 ? oaggItem.dmpaSumSeconds / oaggItem.dmtWeight : 0,
@@ -831,7 +820,6 @@
             dmcSum: 0,
             dmmgSum: 0,
             dmpaSum: 0,
-            tauxTransfoSum: 0,
             identsSum: 0,
             repImmSum: 0,
             transferts: 0,
@@ -852,7 +840,6 @@
             tel.dmcSum += safeParseNumber(row.dmc) * vol;
             tel.dmmgSum += safeParseNumber(row.dmmg) * vol;
             tel.dmpaSum += safeParseNumber(row.dmpa) * vol;
-            tel.tauxTransfoSum += safeParseNumber(row.taux_transfo) * vol;
             tel.identsSum += safeParseNumber(row.identifications) * vol;
             tel.repImmSum += safeParseNumber(row.reponses_immediates) * vol;
             tel.transferts += safeParseNumber(row.transferts);
@@ -874,7 +861,6 @@
                         dmcSum: 0,
                         dmmgSum: 0,
                         dmpaSum: 0,
-                        tauxTransfoSum: 0,
                         identsSum: 0,
                         repImmSum: 0,
                         transferts: 0,
@@ -890,7 +876,6 @@
                 off.dmcSum += safeParseNumber(o.dmc) * ovol;
                 off.dmmgSum += safeParseNumber(o.dmmg) * ovol;
                 off.dmpaSum += safeParseNumber(o.dmpa) * ovol;
-                off.tauxTransfoSum += safeParseNumber(o.taux_transfo) * ovol;
                 off.identsSum += safeParseNumber(o.identifications) * ovol;
                 off.repImmSum += safeParseNumber(o.reponses_immediates) * ovol;
                 off.transferts += safeParseNumber(o.transferts);
@@ -908,7 +893,6 @@
                 dmc: telWeight > 0 ? tel.dmcSum / telWeight : 0,
                 dmmg: telWeight > 0 ? tel.dmmgSum / telWeight : 0,
                 dmpa: telWeight > 0 ? tel.dmpaSum / telWeight : 0,
-                taux_transfo: telWeight > 0 ? tel.tauxTransfoSum / telWeight : 0,
                 identifications: telWeight > 0 ? tel.identsSum / telWeight : 0,
                 reponses_immediates: telWeight > 0 ? tel.repImmSum / telWeight : 0,
                 transferts: tel.transferts,
@@ -929,7 +913,6 @@
                     dmc: w > 0 ? agg.dmcSum / w : 0,
                     dmmg: w > 0 ? agg.dmmgSum / w : 0,
                     dmpa: w > 0 ? agg.dmpaSum / w : 0,
-                    taux_transfo: w > 0 ? agg.tauxTransfoSum / w : 0,
                     identifications: w > 0 ? agg.identsSum / w : 0,
                     reponses_immediates: w > 0 ? agg.repImmSum / w : 0,
                     transferts: agg.transferts,
