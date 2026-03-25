@@ -652,7 +652,7 @@
                         <h4 class="text-xs font-black text-slate-600 uppercase tracking-widest mb-3">Export PDF</h4>
                         <p class="text-xs text-slate-600 mb-3">Générez le bilan au format PDF (résumé puis détail par évaluation). Téléchargement dans votre dossier Téléchargements.</p>
                         <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center flex-wrap">
-                            <label class="flex items-center gap-2 cursor-pointer">
+                            <label x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'" class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" x-model="bilanForm.hideNotesInPdf" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                                 <span class="text-sm font-medium text-slate-700">Ne pas inclure les notes dans le PDF</span>
                             </label>
