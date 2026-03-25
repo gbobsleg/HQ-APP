@@ -3107,6 +3107,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 supervisorName: supervisorName,
                 comment: this.bilanForm.comment || '',
                 hideNotesInPdf: !!this.bilanForm.hideNotesInPdf,
+                campaignType: (this.campaignConfig && this.campaignConfig.campaign_type === 'review' ? 'review' : 'scoring'),
                 evals: this.bilanForm.evals || [],
                 grid: this.grid || []
             };

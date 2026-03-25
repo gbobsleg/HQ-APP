@@ -6,11 +6,81 @@
 (function () {
     'use strict';
 
-    function generate(options) {
-        if (!window.jspdf || !window.jspdf.jsPDF) {
-            console.error('BilanPdf: jsPDF non chargé.');
-            return;
+    function getSections(grid) {
+        var sections = (grid && grid.sections) ? grid.sections : (Array.isArray(grid) ? grid : []);
+        return sections.map(function (sec) {
+            var fields = Array.isArray(sec && sec.fields) ? sec.fields : (Array.isArray(sec && sec.items) ? sec.items : []);
+            return {
+                id: sec && sec.id ? sec.id : '',
+                label: sec && sec.label ? sec.label : '',
+                fields: fields
+            };
+        });
+    }
+
+    function resolveFieldValue(field, data) {
+        var safeData = data || {};
+        var textResponses = safeData.textResponses || {};
+        var booleanResponses = safeData.booleanResponses || {};
+        var scores = safeData.scores || {};
+        var comments = safeData.comments || {};
+        var id = field && field.id ? field.id : '';
+
+        if (!id || !field || !field.type) return 'Non renseigné';
+
+        if (field.type === 'textarea') {
+            var txt = (textResponses[id] != null ? String(textResponses[id]) : '').trim();
+            return txt !== '' ? txt : 'Non renseigné';
         }
+
+        if (field.type === 'boolean') {
+            if (!(id in booleanResponses)) return 'Non renseigné';
+            return booleanResponses[id] === true ? 'Oui' : 'Non';
+        }
+
+        if (field.type === 'scoring') {
+            var raw = scores[id];
+            if (raw == null || raw === '') return 'Non renseigné';
+            var suffix = (field.max != null) ? '/' + field.max : '';
+            var base = String(raw) + suffix;
+            var comment = (comments[id] != null ? String(comments[id]) : '').trim();
+            return comment ? (base + ' — ' + comment) : base;
+        }
+
+        return 'Non renseigné';
+    }
+
+    function getFileName(agentName) {
+        return "Bilan_" + (agentName || '').replace(/\s+/g, '_') + "_" + new Date().toISOString().split('T')[0] + ".pdf";
+    }
+
+    function createPageHelpers(doc, margin) {
+        var pageHeight = doc.internal.pageSize.height;
+
+        function ensurePageSpace(cursor, requiredHeight) {
+            if (cursor.y + requiredHeight <= pageHeight - margin) return;
+            doc.addPage();
+            cursor.y = margin;
+        }
+
+        function writeParagraph(cursor, text, width, lineHeight, requiredHeadRoom) {
+            var t = (text == null ? '' : String(text)).trim();
+            var lines = t ? doc.splitTextToSize(t, width) : [''];
+            ensurePageSpace(cursor, (requiredHeadRoom || 0) + lines.length * lineHeight);
+            for (var i = 0; i < lines.length; i++) {
+                doc.text(lines[i], margin, cursor.y);
+                cursor.y += lineHeight;
+            }
+            return lines.length;
+        }
+
+        return {
+            ensurePageSpace: ensurePageSpace,
+            writeParagraph: writeParagraph
+        };
+    }
+
+    function generateScoringPdf(options) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
@@ -185,8 +255,178 @@
             });
         }
 
-        const fileName = "Bilan_" + agentName.replace(/\s+/g, '_') + "_" + new Date().toISOString().split('T')[0] + ".pdf";
-        doc.save(fileName);
+        doc.save(getFileName(agentName));
+    }
+
+    function generateReviewPdf(options) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 20;
+        const contentWidth = pageWidth - (2 * margin);
+        const cursor = { y: margin };
+        const helpers = createPageHelpers(doc, margin);
+        const ensurePageSpace = helpers.ensurePageSpace;
+        const writeParagraph = helpers.writeParagraph;
+
+        const agentName = options.agentName || '';
+        const campaignName = options.campaignName || 'Campagne en cours';
+        const supervisorName = options.supervisorName || '';
+        const comment = options.comment || '';
+        const evals = Array.isArray(options.evals) ? options.evals.slice() : [];
+        const sections = getSections(options.grid || []);
+
+        evals.sort(function (a, b) {
+            var da = Date.parse((a && a.fileContent && a.fileContent.date_communication) || '');
+            var db = Date.parse((b && b.fileContent && b.fileContent.date_communication) || '');
+            if (!isNaN(da) && !isNaN(db)) return da - db;
+            if (!isNaN(da)) return -1;
+            if (!isNaN(db)) return 1;
+            return 0;
+        });
+        const firstEval = evals.length > 0 ? (evals[0] || {}) : {};
+        const firstContent = firstEval.fileContent || {};
+        const rawHeaderDate = firstContent.date_communication || firstEval.date || '';
+        const parsedHeaderDate = Date.parse(rawHeaderDate);
+        const headerDate = !isNaN(parsedHeaderDate)
+            ? (function () {
+                var d = new Date(parsedHeaderDate);
+                var day = String(d.getDate()).padStart(2, '0');
+                var month = String(d.getMonth() + 1).padStart(2, '0');
+                var year = d.getFullYear();
+                var hour = String(d.getHours()).padStart(2, '0');
+                var minute = String(d.getMinutes()).padStart(2, '0');
+                return 'le ' + day + '-' + month + '-' + year + ' à ' + hour + ':' + minute;
+            })()
+            : 'Non renseignée';
+
+        doc.setFontSize(18);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(79, 70, 229);
+        doc.text("Compte-rendu d'entretien", margin, cursor.y);
+        cursor.y += 10;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(55, 65, 81);
+        ensurePageSpace(cursor, 24);
+        doc.text("Agent : " + agentName, margin, cursor.y); cursor.y += 5;
+        doc.text("Campagne : " + campaignName, margin, cursor.y); cursor.y += 5;
+        if (supervisorName) {
+            doc.text("Manager : " + supervisorName, margin, cursor.y);
+            cursor.y += 5;
+        }
+        doc.text("Date de l'entretien : " + headerDate, margin, cursor.y);
+        cursor.y += 10;
+
+        if (evals.length === 0) {
+            doc.setFontSize(11);
+            doc.setTextColor(71, 85, 105);
+            doc.text("Aucun entretien disponible.", margin, cursor.y);
+            cursor.y += 8;
+        }
+
+        for (var i = 0; i < evals.length; i++) {
+            var e = evals[i] || {};
+            var fc = e.fileContent || {};
+            var globalComment = (fc.commentaire || '').trim();
+
+            ensurePageSpace(cursor, 8);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.3);
+            doc.line(margin, cursor.y - 2, pageWidth - margin, cursor.y - 2);
+            cursor.y += 6;
+
+            for (var s = 0; s < sections.length; s++) {
+                var section = sections[s] || {};
+                var fields = Array.isArray(section.fields) ? section.fields : [];
+
+                ensurePageSpace(cursor, 10);
+                doc.setFontSize(11);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(79, 70, 229);
+                doc.text((section.label || ('Section ' + (s + 1))), margin, cursor.y);
+                cursor.y += 6;
+
+                if (fields.length === 0) {
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'italic');
+                    doc.setTextColor(100, 116, 139);
+                    doc.text("Non renseigné", margin + 2, cursor.y);
+                    cursor.y += 6;
+                    continue;
+                }
+
+                for (var f = 0; f < fields.length; f++) {
+                    var field = fields[f] || {};
+                    var label = field.label || field.id || ('Champ ' + (f + 1));
+                    var value = resolveFieldValue(field, fc);
+
+                    doc.setFontSize(10);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(51, 65, 85);
+                    ensurePageSpace(cursor, 6);
+                    doc.text("- " + label, margin + 2, cursor.y);
+                    cursor.y += 5;
+
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(30, 41, 59);
+                    var printedLines = writeParagraph(cursor, value, contentWidth - 6, 5, 2);
+                    if (printedLines === 0) cursor.y += 5;
+                    cursor.y += 2;
+                }
+
+                cursor.y += 2;
+            }
+
+            if (globalComment) {
+                ensurePageSpace(cursor, 10);
+                doc.setFontSize(10);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(51, 65, 85);
+                doc.text("Commentaire de l'évaluateur", margin, cursor.y);
+                cursor.y += 5;
+
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(30, 41, 59);
+                writeParagraph(cursor, globalComment, contentWidth, 5, 2);
+                cursor.y += 4;
+            }
+
+            cursor.y += 4;
+        }
+
+        ensurePageSpace(cursor, 14);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.3);
+        doc.line(margin, cursor.y, pageWidth - margin, cursor.y);
+        cursor.y += 8;
+
+        doc.setFontSize(12);
+        doc.setFont(undefined, 'bold');
+        doc.setTextColor(55, 65, 81);
+        doc.text("Synthèse de l'évaluateur", margin, cursor.y);
+        cursor.y += 6;
+
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(30, 41, 59);
+        writeParagraph(cursor, (comment || 'Non renseigné'), contentWidth, 5, 2);
+
+        doc.save(getFileName(agentName));
+    }
+
+    function generate(options) {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+            console.error('BilanPdf: jsPDF non chargé.');
+            return;
+        }
+        var campaignType = (options && options.campaignType === 'review') ? 'review' : 'scoring';
+        if (campaignType === 'review') {
+            generateReviewPdf(options || {});
+            return;
+        }
+        generateScoringPdf(options || {});
     }
 
     window.BilanPdf = { generate: generate };
