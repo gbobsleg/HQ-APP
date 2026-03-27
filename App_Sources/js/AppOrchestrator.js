@@ -52,6 +52,9 @@ function app() {
         panel360DateFrom: '',
         panel360DateTo: '',
         isImportingStats: false,
+        showImportedStatsDetails: false,
+        statsImportSuccessVisible: false,
+        statsImportSuccessTimer: null,
 
         bilanForm: { show: false, agentName: '', evals: [], email: '', comment: '', lastSaved: null, status: 'new', hideNotesInPdf: true }, // Legacy/Used for Bilan Tab
         bilanGenerating: false,
@@ -1363,6 +1366,12 @@ function app() {
             this.agentContext.agentName = agentDisplayName;
             this.agentContext.campaignName = campaignName;
             this.agentContext.tabs = [];
+            this.showImportedStatsDetails = false;
+            this.statsImportSuccessVisible = false;
+            if (this.statsImportSuccessTimer) {
+                clearTimeout(this.statsImportSuccessTimer);
+                this.statsImportSuccessTimer = null;
+            }
             
             if (!fsManager) { this.notify("FileSystemManager non chargé.", "error"); return; }
             try {
@@ -1840,6 +1849,13 @@ function app() {
 
                 if (typeof this.form.stats_analysis_comment !== 'string') this.form.stats_analysis_comment = '';
                 this.evalSaveStatus = 'Modifications...';
+                this.showImportedStatsDetails = false;
+                this.statsImportSuccessVisible = true;
+                if (this.statsImportSuccessTimer) clearTimeout(this.statsImportSuccessTimer);
+                this.statsImportSuccessTimer = setTimeout(() => {
+                    this.statsImportSuccessVisible = false;
+                    this.statsImportSuccessTimer = null;
+                }, 4000);
                 this.notify("Statistiques importées pour la période évaluée.", "success");
             } catch (e) {
                 console.error(e);
@@ -1891,6 +1907,12 @@ function app() {
             
             const tab = this.agentContext.tabs[index];
             this.agentContext.activeTabIndex = index;
+            this.showImportedStatsDetails = false;
+            this.statsImportSuccessVisible = false;
+            if (this.statsImportSuccessTimer) {
+                clearTimeout(this.statsImportSuccessTimer);
+                this.statsImportSuccessTimer = null;
+            }
 
             if (tab.type === 'eval') {
                 const data = JSON.parse(JSON.stringify(tab.data));

@@ -211,13 +211,26 @@
                                     @click="importAgentStats()"
                                     :disabled="isImportingStats || isCampaignClosed"
                                     class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl shadow-lg transition-all text-sm">
-                                <span x-text="isImportingStats ? 'Import des statistiques...' : 'Importer les statistiques de la période évaluée'"></span>
+                                <span x-text="isImportingStats ? 'Import des statistiques...' : '📸 Capturer et inclure les stats dans l\\'entretien'"></span>
                             </button>
                         </template>
 
                         <template x-if="form.stats_snapshot">
                             <div class="space-y-4">
-                                <div class="grid grid-cols-1 gap-3">
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <button type="button"
+                                            @click="showImportedStatsDetails = !showImportedStatsDetails"
+                                            class="inline-flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-4 py-2 rounded-xl transition-colors text-xs uppercase tracking-wider">
+                                        <span x-text="showImportedStatsDetails ? '🙈 Masquer les détails' : '👁️ Voir les détails'"></span>
+                                    </button>
+                                    <span x-show="statsImportSuccessVisible"
+                                          x-transition
+                                          class="text-emerald-600 font-bold text-xs uppercase tracking-wider">
+                                        ✅ Statistiques figées avec succès
+                                    </span>
+                                </div>
+
+                                <div x-show="showImportedStatsDetails" x-transition class="grid grid-cols-1 gap-3">
 
                                     <!-- Téléphone (global + by_offer) -->
                                     <div x-show="form.stats_snapshot.channels && form.stats_snapshot.channels.phone"
