@@ -194,17 +194,28 @@
 
                 <section class="col-span-12 lg:col-span-8 flex flex-col gap-8">
                     <div x-show="campaignConfig && campaignConfig.campaign_type === 'review' && (((campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.phone) || (campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.email) || (campaignConfig.stats_config && campaignConfig.stats_config.channels && campaignConfig.stats_config.channels.watt)))"
-                         class="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 space-y-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">Dashboard Stats Manager</h3>
-                                <p class="text-xs text-slate-500 mt-2"
-                                   x-text="form.stats_snapshot ? ('Période évaluée : du ' + formatDateToFR(form.stats_snapshot.period.eval_start) + ' au ' + formatDateToFR(form.stats_snapshot.period.eval_end)) : ('Période évaluée : du ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_start) ? campaignConfig.stats_config.eval_start : campaignConfig.period_start) + ' au ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_end) ? campaignConfig.stats_config.eval_end : campaignConfig.period_end))"></p>
+                         x-data="{ statsSectionCollapsed: false }"
+                         class="order-last bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div @click="statsSectionCollapsed = !statsSectionCollapsed"
+                             class="bg-slate-50 px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3 cursor-pointer hover:bg-slate-100 transition-colors select-none">
+                            <div class="flex items-start gap-3">
+                                <svg class="w-4 h-4 text-slate-400 transition-transform duration-200 mt-0.5"
+                                     :class="statsSectionCollapsed ? '-rotate-90' : 'rotate-0'"
+                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                                <div>
+                                    <h3 class="text-xs font-black text-slate-500 uppercase tracking-widest">Statistiques individuelles</h3>
+                                    <p class="text-xs text-slate-500 mt-2"
+                                       x-text="form.stats_snapshot ? ('Période évaluée : du ' + formatDateToFR(form.stats_snapshot.period.eval_start) + ' au ' + formatDateToFR(form.stats_snapshot.period.eval_end)) : ('Période évaluée : du ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_start) ? campaignConfig.stats_config.eval_start : campaignConfig.period_start) + ' au ' + formatDateToFR((campaignConfig.stats_config && campaignConfig.stats_config.eval_end) ? campaignConfig.stats_config.eval_end : campaignConfig.period_end))"></p>
+                                </div>
                             </div>
                             <span x-show="form.stats_snapshot && form.stats_snapshot.imported_at"
-                                  class="text-[10px] text-slate-400 font-bold uppercase tracking-widest"
+                                  class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5"
                                   x-text="'Snapshot: ' + new Date(form.stats_snapshot.imported_at).toLocaleString('fr-FR')"></span>
                         </div>
+
+                        <div class="p-6 space-y-4" x-show="!statsSectionCollapsed" x-transition>
 
                         <template x-if="!form.stats_snapshot">
                             <button type="button"
@@ -516,6 +527,7 @@
                                 </div>
                             </div>
                         </template>
+                        </div>
                     </div>
 
                     <template x-for="(section, index) in (grid || [])" :key="section.id || index">
