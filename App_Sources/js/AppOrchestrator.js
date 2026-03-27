@@ -1864,6 +1864,25 @@ function app() {
             });
         },
 
+        normalizeFileToken(value) {
+            return String(value == null ? '' : value)
+                .trim()
+                .replace(/\s+/g, '_')
+                .replace(/[^a-zA-Z0-9_-]/g, '_');
+        },
+
+        resolveEvalFileName(agentId, campaignId) {
+            const safeCampaignId = this.normalizeFileToken(campaignId);
+            const safeAgentId = this.normalizeFileToken(agentId);
+            return `eval_${safeCampaignId}_${safeAgentId}.json`;
+        },
+
+        resolveBilanFileName(agentId, campaignId) {
+            const safeCampaignId = this.normalizeFileToken(campaignId);
+            const safeAgentId = this.normalizeFileToken(agentId);
+            return `bilan_${safeCampaignId}_${safeAgentId}.json`;
+        },
+
         selectTab(id) {
             const index = this.agentContext.tabs.findIndex(t => t.id === id);
             if (index === -1) return;
@@ -2088,8 +2107,7 @@ function app() {
                 
                 let fileName = currentTab.data._fileName;
                 if (!fileName) {
-                    const agentNameForFile = (this.form.agent || this.agentContext.agentName || '').replace(/\s+/g, '_');
-                    fileName = `eval_${agentNameForFile}_${Date.now()}.json`;
+                    fileName = this.resolveEvalFileName(this.agentContext.agentId, sanitizedCampagne);
                 }
                 const ts = Date.now();
                 const dataToSave = this.evaluationEngine
@@ -2107,15 +2125,17 @@ function app() {
                 if (this.campaignConfig && this.campaignConfig.target_evals === 1 && !isDraft && this.isEvalComplete()) {
                     try {
                         const syntheseText = this.bilanForm.comment || '';
-                        const bilanFileName = `bilan_${this.agentContext.agentName.replace(/\s+/g, '_')}_${Date.now()}.json`;
+                        let bilanTab = this.agentContext.tabs.find(t => t.type === 'bilan');
+                        const bilanFileName = (bilanTab && bilanTab.data && bilanTab.data._fileName)
+                            ? bilanTab.data._fileName
+                            : this.resolveBilanFileName(this.agentContext.agentId, sanitizedCampagne);
                         const bilanData = this.evaluationEngine
                             ? this.evaluationEngine.buildBilanPayload(this.agentContext, syntheseText, '', [fileName], false, bilanFileName)
                             : { type: 'bilan', agentId: this.agentContext.agentId, agent: this.agentContext.agentName, date: new Date().toISOString(), evals_included: [fileName], synthese: syntheseText, email_sent_to: '', sent: false, _fileName: bilanFileName };
-                        const ts = parseInt(bilanFileName.match(/_(\d+)\.json$/)?.[1], 10) || Date.now();
+                        const ts = Date.now();
                         bilanData._timestamp = ts;
                         await fsManager.writeJsonFile(campaignHandle, bilanFileName, bilanData);
 
-                        let bilanTab = this.agentContext.tabs.find(t => t.type === 'bilan');
                         if (bilanTab) {
                             bilanTab.data = bilanData;
                             bilanTab.data._fileName = bilanFileName;
@@ -2156,7 +2176,7 @@ function app() {
                 const sanitizedCampagne = repository.sanitizeDirectoryName(this.form.campagne);
                 const campaignHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedCampagne);
                 const agentDisplayName = this.getAgentDisplayName(agent);
-                const fileName = `eval_${agentDisplayName.replace(/\s+/g, '_')}_${Date.now()}.json`;
+                const fileName = this.resolveEvalFileName(agentId, sanitizedCampagne);
                 const ts = Date.now();
                 const dataToSave = this.evaluationEngine
                     ? this.evaluationEngine.buildEvalPayload(this.form, { agentId: agentId, agent: agentDisplayName, fileName, timestamp: ts })
@@ -2189,11 +2209,12 @@ function app() {
             }
 
             try {
+                const sanitizedCampagne = repository.sanitizeDirectoryName(this.agentContext.campaignName);
                 const campaignHandle = await this.campagnesHandle.getDirectoryHandle(this.agentContext.campaignName);
                 
                 let fileName = currentTab.data._fileName;
                 if (!fileName) {
-                    fileName = `bilan_${this.agentContext.agentName.replace(/\s+/g, '_')}_${Date.now()}.json`;
+                    fileName = this.resolveBilanFileName(this.agentContext.agentId, sanitizedCampagne);
                 }
                 const evalsIncluded = this.bilanForm.evals.map(e => e.fileContent._fileName);
                 const bilanData = this.evaluationEngine
