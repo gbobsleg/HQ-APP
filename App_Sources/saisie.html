@@ -503,8 +503,11 @@
                                     <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Analyse des statistiques</label>
                                     <textarea x-model="form.stats_analysis_comment"
                                               :readonly="isCampaignClosed"
+                                              @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                              @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                              @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
                                               rows="4"
-                                              class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                              class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 outline-none focus:ring-2 focus:ring-indigo-500 text-sm transition-[height] duration-200 ease-out overflow-y-hidden resize-none max-h-[40vh]"
                                               placeholder="Analyse libre du manager (constats, écarts, hypothèses, actions)..."></textarea>
                                 </div>
 
@@ -584,7 +587,10 @@
                                                 <div x-show="showComment" x-transition class="mt-3 ml-2 mr-2">
                                                     <textarea x-model="form.comments[field.id]"
                                                               :readonly="isCampaignClosed"
-                                                              class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400"
+                                                              @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                                              @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                                              @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
+                                                              class="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400 transition-[height] duration-200 ease-out overflow-y-hidden resize-none max-h-[40vh]"
                                                               rows="2" placeholder="Commentaire spécifique à ce critère..."></textarea>
                                                 </div>
                                             </div>
@@ -607,9 +613,12 @@
                                                 </div>
                                                 <textarea x-model="form.textResponses[field.id]"
                                                           :readonly="isCampaignClosed"
+                                                          @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                                          @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                                          @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
                                                           :rows="field.rows || 3"
                                                           :placeholder="field.placeholder || ''"
-                                                          class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400"></textarea>
+                                                          class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-200 outline-none text-slate-600 placeholder-slate-400 transition-[height] duration-200 ease-out overflow-y-hidden resize-none max-h-[40vh]"></textarea>
                                             </div>
                                         </template>
                                         <template x-if="field.type === 'boolean'">
@@ -658,7 +667,7 @@
                                 <span x-text="evalCommentGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
                             </button>
                         </div>
-                        <textarea x-model="form.commentaire" :readonly="isCampaignClosed" rows="4" class="w-full bg-slate-50 border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Décrivez les points d'amélioration..."></textarea>
+                        <textarea x-model="form.commentaire" :readonly="isCampaignClosed" @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')" rows="4" class="w-full bg-slate-50 border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-[height] duration-200 ease-out overflow-y-hidden resize-none max-h-[40vh]" placeholder="Décrivez les points d'amélioration..."></textarea>
                     </div>
                 </section>
             </div>
@@ -724,7 +733,11 @@
                             </div>
                             <textarea x-model="bilanForm.comment"
                                       x-bind:readonly="isCampaignClosed"
-                                      class="w-full h-80 bg-slate-50 border border-slate-200 rounded-2xl p-6 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm leading-relaxed resize-none shadow-inner"
+                                      @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                      @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                      @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
+                                      rows="4"
+                                      class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm leading-relaxed resize-none shadow-inner transition-[height] duration-200 ease-out overflow-y-hidden max-h-[40vh]"
                                       :class="{'bg-gray-100': isCampaignClosed}"
                                       placeholder="Rédigez ici le bilan global, les points forts constatés et les objectifs pour la prochaine période..."></textarea>
                         </div>
