@@ -422,23 +422,34 @@
                 var benchmark = statsSnap.benchmark;
                 var period = statsSnap.period || {};
                 var anyStatsRendered = false;
+                var statsMainTitleDone = false;
+                function placeStatsMainTitle() {
+                    if (statsMainTitleDone) return;
+                    statsMainTitleDone = true;
+                    ensurePageSpace(cursor, 38);
+                    doc.setFontSize(11);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(79, 70, 229);
+                    doc.text("Statistiques de production", margin, cursor.y);
+                    cursor.y += 7;
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'normal');
+                    doc.setTextColor(100, 116, 139);
+                    doc.text("P\u00e9riode : " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
+                    cursor.y += 6;
+                }
 
                 // Téléphone
                 var telMetric = metrics.telephone || null;
                 var telHidden = telMetric && telMetric.hidden === true;
                 if (telMetric && !telHidden) {
                     anyStatsRendered = true;
-                    ensurePageSpace(cursor, 10);
-                    doc.setFontSize(10);
+                    placeStatsMainTitle();
+                    ensurePageSpace(cursor, 30);
+                    doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
-                    doc.setTextColor(55, 65, 81);
+                    doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques Téléphone (par offre)", margin, cursor.y);
-                    cursor.y += 5;
-
-                    doc.setFont(undefined, 'normal');
-                    doc.setTextColor(30, 41, 59);
-                    doc.setFontSize(9);
-                    doc.text("Période: " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
                     cursor.y += 4;
 
                     var telGlobal = telMetric.global ? telMetric.global : telMetric;
@@ -512,14 +523,32 @@
                             body: telBody,
                             foot: telFoot,
                             showFoot: telFoot.length ? 'lastPage' : 'never',
-                            styles: { fontSize: 7, cellPadding: 1.8, textColor: 30 },
-                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
-                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold' },
+                            styles: {
+                                fontSize: 6.5,
+                                cellPadding: { top: 1.3, right: 0.9, bottom: 1.3, left: 0.9 },
+                                textColor: 30,
+                                valign: 'middle'
+                            },
+                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold', fontSize: 6.5 },
+                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 6.5 },
+                            columnStyles: {
+                                0: { minCellWidth: 18 },
+                                1: { minCellWidth: 11, halign: 'center' },
+                                2: { minCellWidth: 19 },
+                                3: { minCellWidth: 19 },
+                                4: { minCellWidth: 19 },
+                                5: { minCellWidth: 19 },
+                                6: { minCellWidth: 17 },
+                                7: { minCellWidth: 19 },
+                                8: { minCellWidth: 11, halign: 'center' },
+                                9: { minCellWidth: 13, halign: 'center' },
+                                10: { minCellWidth: 9, halign: 'center' }
+                            },
                             theme: 'grid',
                             rowPageBreak: 'auto',
                             didDrawPage: function () {}
                         });
-                        cursor.y = doc.lastAutoTable.finalY + 6;
+                        cursor.y = doc.lastAutoTable.finalY + 8;
                     }
                 }
 
@@ -528,12 +557,13 @@
                 var courHidden = courMetric && courMetric.hidden === true;
                 if (courMetric && !courHidden) {
                     anyStatsRendered = true;
-                    ensurePageSpace(cursor, 8);
-                    doc.setFontSize(10);
+                    placeStatsMainTitle();
+                    ensurePageSpace(cursor, 30);
+                    doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
-                    doc.setTextColor(55, 65, 81);
+                    doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques Courriels", margin, cursor.y);
-                    cursor.y += 5;
+                    cursor.y += 4;
 
                     var courGlobal = courMetric.global ? courMetric.global : courMetric;
                     var courBody = [[
@@ -552,7 +582,7 @@
                         headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
                         theme: 'grid'
                     });
-                    cursor.y = doc.lastAutoTable.finalY + 6;
+                    cursor.y = doc.lastAutoTable.finalY + 8;
                 }
 
                 // WATT
@@ -560,17 +590,12 @@
                 var wattHidden = wattMetric && wattMetric.hidden === true;
                 if (wattMetric && !wattHidden) {
                     anyStatsRendered = true;
-                    ensurePageSpace(cursor, 10);
-                    doc.setFontSize(10);
+                    placeStatsMainTitle();
+                    ensurePageSpace(cursor, 30);
+                    doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
-                    doc.setTextColor(55, 65, 81);
+                    doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques WATT (par circuit)", margin, cursor.y);
-                    cursor.y += 5;
-
-                    doc.setFont(undefined, 'normal');
-                    doc.setTextColor(30, 41, 59);
-                    doc.setFontSize(9);
-                    doc.text("Période: " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
                     cursor.y += 4;
 
                     var wattRows = [];
@@ -620,15 +645,16 @@
                             rowPageBreak: 'auto',
                             didDrawPage: function () {}
                         });
-                        cursor.y = doc.lastAutoTable.finalY + 6;
+                        cursor.y = doc.lastAutoTable.finalY + 8;
                     }
                 }
 
                 // Analyse des statistiques (commentaire manager)
-                ensurePageSpace(cursor, 10);
-                doc.setFontSize(10);
+                placeStatsMainTitle();
+                ensurePageSpace(cursor, 30);
+                doc.setFontSize(9.5);
                 doc.setFont(undefined, 'bold');
-                doc.setTextColor(55, 65, 81);
+                doc.setTextColor(71, 85, 105);
                 doc.text("Analyse des statistiques", margin, cursor.y);
                 cursor.y += 5;
 
@@ -666,7 +692,7 @@
         doc.setFontSize(12);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(55, 65, 81);
-        doc.text("Synthèse de l'évaluateur", margin, cursor.y);
+        doc.text("Synth\u00e8se", margin, cursor.y);
         cursor.y += 6;
 
         doc.setFontSize(10);
