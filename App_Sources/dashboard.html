@@ -39,10 +39,11 @@
             window.Alpine && window.Alpine.store('dashboard', {
                 activeTab: 'campagnes',
                 selectedAgent360: '',
+                agent360FilterSiteId: '',
                 selectedDateFrom: '',
                 selectedDateTo: '',
                 prodPerimeter: 'global',
-                prodSelectedManager: '',
+                prodSelectedSiteId: '',
                 prodSelectedOffer: '',
                 prodAvailableOffers: []
             });
@@ -204,20 +205,39 @@
                 }
             });
         };
-        function refreshProdFromStore(rootHandle, allAgents, managers) {
+        function refreshProdFromStore(rootHandle, allAgents) {
             var s = window.Alpine && window.Alpine.store('dashboard');
             if (!s) return;
-            refreshProductionDashboard(rootHandle, s.prodPerimeter, s.prodSelectedManager, allAgents, managers, s.selectedDateFrom || null, s.selectedDateTo || null, s.prodSelectedOffer || '');
+            refreshProductionDashboard(rootHandle, s.prodPerimeter, s.prodSelectedSiteId, allAgents, s.selectedDateFrom || null, s.selectedDateTo || null, s.prodSelectedOffer || '');
         }
         function refresh360FromStore(directAgentId, rootHandle, campagnesHandle, allAgents) {
             var s = window.Alpine && window.Alpine.store('dashboard');
             if (!s) return;
-            var agentId = parseInt(directAgentId);
-            if (isNaN(agentId)) return;
+            var agentId = parseInt(directAgentId, 10);
+            if (directAgentId === '' || directAgentId == null || isNaN(agentId)) {
+                refreshAgent360Charts(rootHandle, campagnesHandle, null, '', allAgents, s.selectedDateFrom || null, s.selectedDateTo || null);
+                return;
+            }
             var agent = allAgents && allAgents.find(function(a) { return +a.id === agentId; });
             var name = agent && typeof getAgentDisplayName === 'function' ? getAgentDisplayName(agent) : '';
             refreshAgent360Charts(rootHandle, campagnesHandle, agentId, name, allAgents, s.selectedDateFrom || null, s.selectedDateTo || null);
         }
+        function applyAgent360SiteFilter(rootHandle, campagnesHandle, allAgents) {
+            var s = window.Alpine && window.Alpine.store('dashboard');
+            if (!s) return;
+            var sid = s.agent360FilterSiteId;
+            if (s.selectedAgent360 && sid) {
+                var ag = (allAgents || []).find(function (a) { return String(a.id) === String(s.selectedAgent360); });
+                if (!ag || Number(ag.siteId) !== Number(sid)) {
+                    s.selectedAgent360 = '';
+                }
+            }
+            refresh360FromStore(s.selectedAgent360, rootHandle, campagnesHandle, allAgents);
+            if (typeof window.HQAppAppInstance !== 'undefined' && window.HQAppAppInstance && typeof window.HQAppAppInstance.updateDashboardUrl === 'function') {
+                window.HQAppAppInstance.updateDashboardUrl();
+            }
+        }
+        window.applyAgent360SiteFilter = applyAgent360SiteFilter;
         window.refreshProdFromStore = refreshProdFromStore;
         window.refresh360FromStore = refresh360FromStore;
         function getAvailableOffersFromDto(dto) {
@@ -275,7 +295,7 @@
             clone.production = production;
             return clone;
         }
-        function refreshProductionDashboard(rootHandle, perimeter, selectedManagerId, agentsList, managersList, dateFrom, dateTo, selectedOffer) {
+        function refreshProductionDashboard(rootHandle, perimeter, selectedSiteId, agentsList, dateFrom, dateTo, selectedOffer) {
             var container = document.getElementById('production-charts-container');
             var repo = window.HQApp && window.HQApp.StatsRepository;
             var view = window.HQApp && window.HQApp.ProductionChartsView;
@@ -288,13 +308,12 @@
             view.destroy(container);
             repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }).then(function (production) {
                 agentsList = agentsList || [];
-                managersList = managersList || [];
                 var agentIdsInScope = null;
-                if (perimeter === 'manager' && selectedManagerId != null && selectedManagerId !== '') {
-                    var mid = Number(selectedManagerId);
+                if (perimeter === 'site' && selectedSiteId != null && selectedSiteId !== '') {
+                    var sid = Number(selectedSiteId);
                     agentIdsInScope = {};
                     agentsList.forEach(function (a) {
-                        if (Number(a.managerId) === mid) agentIdsInScope[a.id] = true;
+                        if (Number(a.siteId) === sid) agentIdsInScope[a.id] = true;
                     });
                 }
                 var agentIdsArray = null;
@@ -448,21 +467,21 @@
                 <div class="w-full">
                     <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Périmètre</label>
                     <select x-model="$store.dashboard.prodPerimeter"
-                        @change="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                        @change="refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                         <option value="global">Global</option>
-                        <option value="manager">Équipe (Manager)</option>
+                        <option value="site">Par site</option>
                     </select>
                 </div>
-                <template x-if="$store.dashboard.prodPerimeter === 'manager'">
+                <template x-if="$store.dashboard.prodPerimeter === 'site'">
                     <div class="w-full">
-                        <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Manager</label>
-                        <select x-model="$store.dashboard.prodSelectedManager"
-                            @change="refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                        <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Site</label>
+                        <select x-model="$store.dashboard.prodSelectedSiteId"
+                            @change="refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                             <option value="">— Choisir —</option>
-                            <template x-for="m in (managers || [])" :key="m.id">
-                                <option :value="m.id" x-text="m.nom || ('Manager ' + m.id)"></option>
+                            <template x-for="st in (sites || [])" :key="st.id">
+                                <option :value="st.id" x-text="st.nom || ('Site ' + st.id)"></option>
                             </template>
                         </select>
                     </div>
@@ -471,6 +490,18 @@
             <!-- Bloc Agent 360° -->
             <div x-show="$store.dashboard.activeTab === 'agent360'" class="flex flex-col gap-4">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Filtres Agent 360°</h3>
+                <!-- Par site -->
+                <div class="w-full">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Par site</label>
+                    <select x-model="$store.dashboard.agent360FilterSiteId"
+                        @change="applyAgent360SiteFilter(rootHandle, campagnesHandle, allAgents)"
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                        <option value="">— Tous les sites —</option>
+                        <template x-for="st in (sites || [])" :key="st.id">
+                            <option :value="st.id" x-text="st.nom || ('Site ' + st.id)"></option>
+                        </template>
+                    </select>
+                </div>
                 <!-- Agent -->
                 <div class="w-full">
                     <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Agent</label>
@@ -478,7 +509,7 @@
                         @change="refresh360FromStore($event.target.value, rootHandle, campagnesHandle, allAgents); updateDashboardUrl()"
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                         <option value="">— Choisir un agent —</option>
-                        <template x-for="a in (allAgents || [])" :key="a.id">
+                        <template x-for="a in (allAgents || []).filter(function (ag) { var sid = $store.dashboard.agent360FilterSiteId; return !sid || Number(ag.siteId) === Number(sid); })" :key="a.id">
                             <option :value="a.id" x-text="getAgentDisplayName(a)"></option>
                         </template>
                     </select>
@@ -678,14 +709,14 @@
                         <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
                         <div class="flex flex-wrap gap-1.5">
                             <button type="button"
-                                @click="$store.dashboard.prodSelectedOffer = ''; refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                                @click="$store.dashboard.prodSelectedOffer = ''; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                                 :class="$store.dashboard.prodSelectedOffer === '' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                                 class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors">
                                 Global
                             </button>
                             <template x-for="offer in ($store.dashboard.prodAvailableOffers || [])" :key="offer">
                                 <button type="button"
-                                    @click="$store.dashboard.prodSelectedOffer = offer; refreshProdFromStore(rootHandle, allAgents, managers); updateDashboardUrl()"
+                                    @click="$store.dashboard.prodSelectedOffer = offer; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                                     :class="$store.dashboard.prodSelectedOffer === offer ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                                     class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors"
                                     x-text="offer"></button>

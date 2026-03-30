@@ -281,11 +281,12 @@ function app() {
                 if (this.dashboardFilters && this.dashboardFilters.offer) query += '&offre=' + encodeURIComponent(this.dashboardFilters.offer);
             } else if (tab === 'production') {
                 query = 'tab=production&perimetre=' + (store.prodPerimeter || 'global');
-                if (store.prodPerimeter === 'manager' && store.prodSelectedManager) query += '&managerId=' + encodeURIComponent(store.prodSelectedManager);
+                if (store.prodPerimeter === 'site' && store.prodSelectedSiteId) query += '&siteId=' + encodeURIComponent(store.prodSelectedSiteId);
                 if (store.selectedDateFrom) query += '&dateFrom=' + encodeURIComponent(store.selectedDateFrom);
                 if (store.selectedDateTo) query += '&dateTo=' + encodeURIComponent(store.selectedDateTo);
             } else if (tab === 'agent360') {
                 query = 'tab=agent360';
+                if (store.agent360FilterSiteId) query += '&agent360SiteId=' + encodeURIComponent(store.agent360FilterSiteId);
                 if (store.selectedAgent360) query += '&agentId=' + encodeURIComponent(store.selectedAgent360);
                 if (store.selectedDateFrom) query += '&dateFrom=' + encodeURIComponent(store.selectedDateFrom);
                 if (store.selectedDateTo) query += '&dateTo=' + encodeURIComponent(store.selectedDateTo);
@@ -1153,34 +1154,44 @@ function app() {
                                         store.selectedDateTo = last.getFullYear() + '-' + pad(last.getMonth() + 1) + '-' + pad(last.getDate());
                                     }
                                     var perimetre = params.get('perimetre');
-                                    if (perimetre === 'manager' || perimetre === 'global') store.prodPerimeter = perimetre;
-                                    var managerId = params.get('managerId');
-                                    if (managerId !== null && managerId !== '') store.prodSelectedManager = managerId;
+                                    if (perimetre === 'global' || perimetre === 'site') store.prodPerimeter = perimetre;
+                                    if (perimetre === 'manager') {
+                                        store.prodPerimeter = 'global';
+                                        if (typeof console !== 'undefined' && console.warn) console.warn('[Dashboard] URL obsolète : perimetre=manager — périmètre global appliqué.');
+                                    }
+                                    var siteIdParam = params.get('siteId');
+                                    if (siteIdParam !== null && siteIdParam !== '') store.prodSelectedSiteId = siteIdParam;
+                                    if (params.get('managerId')) {
+                                        if (typeof console !== 'undefined' && console.warn) console.warn('[Dashboard] Paramètre managerId ignoré (filtre par site).');
+                                    }
+                                    var agent360SiteId = params.get('agent360SiteId');
+                                    if (agent360SiteId !== null && agent360SiteId !== '') store.agent360FilterSiteId = agent360SiteId;
                                     var agentId = params.get('agentId');
                                     if (agentId !== null && agentId !== '') store.selectedAgent360 = agentId;
+                                    if (store.agent360FilterSiteId && store.selectedAgent360) {
+                                        var ag360 = (this.allAgents || []).find(function (a) { return String(a.id) === String(store.selectedAgent360); });
+                                        if (!ag360 || Number(ag360.siteId) !== Number(store.agent360FilterSiteId)) {
+                                            store.selectedAgent360 = '';
+                                        }
+                                    }
                                     var site = params.get('site');
                                     if (site !== null) this.dashboardFilters.site = site || '';
                                     var offre = params.get('offre');
                                     if (offre !== null) this.dashboardFilters.offer = offre || '';
                                 }
-                                if (store && store.activeTab === 'production' && this.rootHandle && this.allAgents && this.managers) {
+                                if (store && store.activeTab === 'production' && this.rootHandle && this.allAgents) {
                                     if (window.refreshProductionDashboard) {
-                                        window.refreshProductionDashboard(this.rootHandle, store.prodPerimeter, store.prodSelectedManager, this.allAgents, this.managers, store.selectedDateFrom || null, store.selectedDateTo || null);
+                                        window.refreshProductionDashboard(this.rootHandle, store.prodPerimeter, store.prodSelectedSiteId, this.allAgents, store.selectedDateFrom || null, store.selectedDateTo || null, store.prodSelectedOffer || '');
                                     }
                                 }
-                                if (store && store.activeTab === 'agent360' && store.selectedAgent360 && this.rootHandle && this.campagnesHandle) {
-                                    if (window.refreshAgent360Charts) {
-                                        var agentIdNum = parseInt(store.selectedAgent360, 10);
-                                        var agent = this.getAgentById(agentIdNum);
-                                        var agentDisplayName = agent ? this.getAgentDisplayName(agent) : '';
-                                        window.refreshAgent360Charts(this.rootHandle, this.campagnesHandle, agentIdNum, agentDisplayName, this.agents || this.allAgents || [], store.selectedDateFrom || null, store.selectedDateTo || null);
-                                    }
+                                if (store && store.activeTab === 'agent360' && this.rootHandle && this.campagnesHandle && window.refresh360FromStore) {
+                                    window.refresh360FromStore(store.selectedAgent360, this.rootHandle, this.campagnesHandle, this.allAgents || []);
                                 }
                                 window.refreshDashboardFromFilters = function() {
                                     var s = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
                                     if (!s) return;
-                                    if (s.activeTab === 'production' && self.rootHandle && self.allAgents && self.managers && window.refreshProdFromStore) {
-                                        window.refreshProdFromStore(self.rootHandle, self.allAgents, self.managers);
+                                    if (s.activeTab === 'production' && self.rootHandle && self.allAgents && window.refreshProdFromStore) {
+                                        window.refreshProdFromStore(self.rootHandle, self.allAgents);
                                     }
                                     if (s.activeTab === 'agent360' && self.rootHandle && self.campagnesHandle && window.refresh360FromStore) {
                                         window.refresh360FromStore(s.selectedAgent360, self.rootHandle, self.campagnesHandle, self.allAgents);
@@ -1267,11 +1278,11 @@ function app() {
                                     var s = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
                                     if (!s) return;
 
-                                    if (newTab === 'production' && self.rootHandle && self.allAgents && self.managers && window.refreshProdFromStore) {
-                                        window.refreshProdFromStore(self.rootHandle, self.allAgents, self.managers);
+                                    if (newTab === 'production' && self.rootHandle && self.allAgents && window.refreshProdFromStore) {
+                                        window.refreshProdFromStore(self.rootHandle, self.allAgents);
                                     }
 
-                                    if (newTab === 'agent360' && self.rootHandle && self.campagnesHandle && s.selectedAgent360 && window.refresh360FromStore) {
+                                    if (newTab === 'agent360' && self.rootHandle && self.campagnesHandle && window.refresh360FromStore) {
                                         window.refresh360FromStore(s.selectedAgent360, self.rootHandle, self.campagnesHandle, self.allAgents);
                                     }
                                 }
