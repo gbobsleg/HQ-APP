@@ -421,7 +421,6 @@
                 var metrics = statsSnap.metrics || {};
                 var benchmark = statsSnap.benchmark;
                 var period = statsSnap.period || {};
-                var anyStatsRendered = false;
                 var statsMainTitleDone = false;
                 function placeStatsMainTitle() {
                     if (statsMainTitleDone) return;
@@ -443,9 +442,8 @@
                 var telMetric = metrics.telephone || null;
                 var telHidden = telMetric && telMetric.hidden === true;
                 if (telMetric && !telHidden) {
-                    anyStatsRendered = true;
                     placeStatsMainTitle();
-                    ensurePageSpace(cursor, 30);
+                    ensurePageSpace(cursor, 50);
                     doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
                     doc.setTextColor(71, 85, 105);
@@ -524,25 +522,38 @@
                             foot: telFoot,
                             showFoot: telFoot.length ? 'lastPage' : 'never',
                             styles: {
-                                fontSize: 6.5,
-                                cellPadding: { top: 1.3, right: 0.9, bottom: 1.3, left: 0.9 },
+                                fontSize: 6.2,
+                                cellPadding: { top: 1.1, right: 0.7, bottom: 1.1, left: 0.7 },
                                 textColor: 30,
                                 valign: 'middle'
                             },
-                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold', fontSize: 6.5 },
-                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 6.5 },
+                            headStyles: {
+                                fillColor: [248, 250, 252],
+                                textColor: 55,
+                                fontStyle: 'bold',
+                                fontSize: 6.1,
+                                overflow: 'linebreak'
+                            },
+                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 6.2 },
                             columnStyles: {
-                                0: { minCellWidth: 18 },
-                                1: { minCellWidth: 11, halign: 'center' },
-                                2: { minCellWidth: 19 },
-                                3: { minCellWidth: 19 },
-                                4: { minCellWidth: 19 },
-                                5: { minCellWidth: 19 },
-                                6: { minCellWidth: 17 },
-                                7: { minCellWidth: 19 },
-                                8: { minCellWidth: 11, halign: 'center' },
-                                9: { minCellWidth: 13, halign: 'center' },
-                                10: { minCellWidth: 9, halign: 'center' }
+                                0: { minCellWidth: 16 },
+                                1: { minCellWidth: 10 },
+                                2: { minCellWidth: 17 },
+                                3: { minCellWidth: 17 },
+                                4: { minCellWidth: 17 },
+                                5: { minCellWidth: 17 },
+                                6: { minCellWidth: 16 },
+                                7: { minCellWidth: 18 },
+                                8: { minCellWidth: 11 },
+                                9: { minCellWidth: 13 },
+                                10: { minCellWidth: 8 }
+                            },
+                            didParseCell: function (data) {
+                                // Forçage définitif du centrage sur colonnes volume
+                                if ((data.section === 'body' || data.section === 'foot') &&
+                                    (data.column.index === 1 || data.column.index === 8 || data.column.index === 9 || data.column.index === 10)) {
+                                    data.cell.styles.halign = 'center';
+                                }
                             },
                             theme: 'grid',
                             rowPageBreak: 'auto',
@@ -556,9 +567,8 @@
                 var courMetric = metrics.courriels || null;
                 var courHidden = courMetric && courMetric.hidden === true;
                 if (courMetric && !courHidden) {
-                    anyStatsRendered = true;
                     placeStatsMainTitle();
-                    ensurePageSpace(cursor, 30);
+                    ensurePageSpace(cursor, 45);
                     doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
                     doc.setTextColor(71, 85, 105);
@@ -589,9 +599,8 @@
                 var wattMetric = metrics.watt || null;
                 var wattHidden = wattMetric && wattMetric.hidden === true;
                 if (wattMetric && !wattHidden) {
-                    anyStatsRendered = true;
                     placeStatsMainTitle();
-                    ensurePageSpace(cursor, 30);
+                    ensurePageSpace(cursor, 45);
                     doc.setFontSize(9.5);
                     doc.setFont(undefined, 'bold');
                     doc.setTextColor(71, 85, 105);
@@ -651,7 +660,7 @@
 
                 // Analyse des statistiques (commentaire manager)
                 placeStatsMainTitle();
-                ensurePageSpace(cursor, 30);
+                ensurePageSpace(cursor, 55);
                 doc.setFontSize(9.5);
                 doc.setFont(undefined, 'bold');
                 doc.setTextColor(71, 85, 105);
