@@ -139,8 +139,8 @@
         doc.roundedRect(margin - 2, finalY - 4, pageWidth - 2 * margin + 4, 8, 1, 1, 'F');
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
-        doc.setTextColor(55, 65, 81);
-        doc.text("Synth\u00e8se", margin, finalY + 2);
+        doc.setTextColor(79, 70, 229);
+        doc.text("Synth\u00e8se / Plan d'action", margin, finalY + 2);
 
         doc.setFontSize(9);
         doc.setFont(undefined, 'normal');
@@ -425,7 +425,7 @@
                 function placeStatsMainTitle() {
                     if (statsMainTitleDone) return;
                     statsMainTitleDone = true;
-                    ensurePageSpace(cursor, 38);
+                    ensurePageSpace(cursor, 48);
                     doc.setFontSize(11);
                     doc.setFont(undefined, 'bold');
                     doc.setTextColor(79, 70, 229);
@@ -692,16 +692,17 @@
             cursor.y += 4;
         }
 
-        ensurePageSpace(cursor, 14);
+        ensurePageSpace(cursor, 55);
         doc.setDrawColor(203, 213, 225);
         doc.setLineWidth(0.3);
         doc.line(margin, cursor.y, pageWidth - margin, cursor.y);
         cursor.y += 8;
 
-        doc.setFontSize(12);
+        ensurePageSpace(cursor, 55);
+        doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
-        doc.setTextColor(55, 65, 81);
-        doc.text("Synth\u00e8se", margin, cursor.y);
+        doc.setTextColor(79, 70, 229);
+        doc.text("Synth\u00e8se / Plan d'action", margin, cursor.y);
         cursor.y += 6;
 
         doc.setFontSize(10);
