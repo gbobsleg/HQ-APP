@@ -14,6 +14,45 @@ function persistUpdateCheckCache(status, remoteVersion, error) {
     } catch (e) {}
 }
 
+function parseIsoDateLocal(isoDateStr) {
+    var parts = String(isoDateStr || '').split('-');
+    if (parts.length !== 3) return null;
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var d = parseInt(parts[2], 10);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+function parseEntretienDateLocal(rawDateTime) {
+    var raw = (rawDateTime == null ? '' : String(rawDateTime)).trim();
+    if (!raw) {
+        var now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+    }
+    var datePart = raw.slice(0, 10);
+    var parsed = parseIsoDateLocal(datePart);
+    if (parsed) return parsed;
+    var fallback = new Date();
+    return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 12, 0, 0, 0);
+}
+
+function toIsoDateLocal(dateObj) {
+    if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return '';
+    var y = dateObj.getFullYear();
+    var m = String(dateObj.getMonth() + 1).padStart(2, '0');
+    var d = String(dateObj.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+}
+
+function minusOneDayLocal(dateObj) {
+    if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return null;
+    var copy = new Date(dateObj.getTime());
+    copy.setDate(copy.getDate() - 1);
+    return copy;
+}
+
 function getUpdateCheckCache() {
     try {
         var raw = localStorage.getItem(HQ_APP_UPDATE_CHECK_KEY);
@@ -1634,6 +1673,21 @@ function app() {
                 this.notify("Période évaluée introuvable dans la campagne.", "error");
                 return;
             }
+            var effectiveEvalEnd = evalEnd;
+            var evalStartDate = parseIsoDateLocal(evalStart);
+            var evalEndDate = parseIsoDateLocal(evalEnd);
+            var entretienDate = parseEntretienDateLocal(this.form && this.form.date_communication);
+            if (evalEndDate && entretienDate && entretienDate.getTime() <= evalEndDate.getTime()) {
+                var jMinusOneDate = minusOneDayLocal(entretienDate);
+                if (jMinusOneDate) {
+                    if (evalStartDate && jMinusOneDate.getTime() < evalStartDate.getTime()) {
+                        effectiveEvalEnd = evalStart;
+                    } else {
+                        var jMinusOneIso = toIsoDateLocal(jMinusOneDate);
+                        effectiveEvalEnd = jMinusOneIso || evalEnd;
+                    }
+                }
+            }
 
             this.isImportingStats = true;
             try {
@@ -1642,12 +1696,12 @@ function app() {
                     agentId: agentId,
                     agents: agentsRef,
                     dateFrom: evalStart,
-                    dateTo: evalEnd
+                    dateTo: effectiveEvalEnd
                 });
                 const productionPerimeter = await repo.loadProductionStats(this.rootHandle, {
                     agents: agentsRef,
                     dateFrom: evalStart,
-                    dateTo: evalEnd
+                    dateTo: effectiveEvalEnd
                 });
                 const perimeterDto = repo.aggregatePerimeterStats(productionPerimeter || {}, null);
 
@@ -1817,7 +1871,7 @@ function app() {
                     imported_at: new Date().toISOString(),
                     period: {
                         eval_start: evalStart,
-                        eval_end: evalEnd,
+                        eval_end: effectiveEvalEnd,
                         compare_start: rawStatsCfg.compare_start || '',
                         compare_end: rawStatsCfg.compare_end || ''
                     },

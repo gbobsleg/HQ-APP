@@ -268,6 +268,15 @@
         const helpers = createPageHelpers(doc, margin);
         const ensurePageSpace = helpers.ensurePageSpace;
         const writeParagraph = helpers.writeParagraph;
+        function calculateRequiredSpace(docRef, text, maxWidth, minLines = 3, lineHeight = 5) {
+            var safeText = (text == null ? '' : String(text)).trim();
+            if (!safeText) safeText = 'Non renseigné';
+            docRef.setFontSize(10);
+            docRef.setFont(undefined, 'normal');
+            var lines = docRef.splitTextToSize(safeText, maxWidth);
+            var keptLines = Math.min(Math.max(lines.length, 1), Math.max(1, minLines));
+            return keptLines * lineHeight;
+        }
 
         function fmtDate(raw) {
             if (!raw) return '—';
@@ -660,7 +669,9 @@
 
                 // Analyse des statistiques (commentaire manager)
                 placeStatsMainTitle();
-                ensurePageSpace(cursor, 55);
+                var statsComment = (fc.stats_analysis_comment || '').trim();
+                var analysisRequiredHeight = 5 + calculateRequiredSpace(doc, statsComment, contentWidth, 3, 5) + 2;
+                ensurePageSpace(cursor, analysisRequiredHeight);
                 doc.setFontSize(9.5);
                 doc.setFont(undefined, 'bold');
                 doc.setTextColor(71, 85, 105);
@@ -670,7 +681,6 @@
                 doc.setFont(undefined, 'normal');
                 doc.setFontSize(10);
                 doc.setTextColor(30, 41, 59);
-                var statsComment = (fc.stats_analysis_comment || '').trim();
                 writeParagraph(cursor, statsComment || 'Non renseigné', contentWidth, 5, 2);
                 cursor.y += 4;
             }
@@ -692,13 +702,13 @@
             cursor.y += 4;
         }
 
-        ensurePageSpace(cursor, 55);
+        var synthesisComment = (comment || '').trim();
+        var synthesisRequiredHeight = 8 + 6 + calculateRequiredSpace(doc, synthesisComment, contentWidth, 3, 5) + 2;
+        ensurePageSpace(cursor, synthesisRequiredHeight);
         doc.setDrawColor(203, 213, 225);
         doc.setLineWidth(0.3);
         doc.line(margin, cursor.y, pageWidth - margin, cursor.y);
         cursor.y += 8;
-
-        ensurePageSpace(cursor, 55);
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
         doc.setTextColor(79, 70, 229);
