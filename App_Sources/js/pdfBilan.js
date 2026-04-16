@@ -268,14 +268,14 @@
         const helpers = createPageHelpers(doc, margin);
         const ensurePageSpace = helpers.ensurePageSpace;
         const writeParagraph = helpers.writeParagraph;
-        function calculateRequiredSpace(docRef, text, maxWidth, minLines = 3, lineHeight = 5) {
+        function calculateRequiredSpace(docRef, text, maxWidth, lineHeight = 5) {
             var safeText = (text == null ? '' : String(text)).trim();
             if (!safeText) safeText = 'Non renseigné';
             docRef.setFontSize(10);
             docRef.setFont(undefined, 'normal');
             var lines = docRef.splitTextToSize(safeText, maxWidth);
-            var keptLines = Math.min(Math.max(lines.length, 1), Math.max(1, minLines));
-            return keptLines * lineHeight;
+            var totalLines = Math.max(lines.length, 1);
+            return totalLines * lineHeight;
         }
 
         function fmtDate(raw) {
@@ -670,7 +670,7 @@
                 // Analyse des statistiques (commentaire manager)
                 placeStatsMainTitle();
                 var statsComment = (fc.stats_analysis_comment || '').trim();
-                var analysisRequiredHeight = 5 + calculateRequiredSpace(doc, statsComment, contentWidth, 3, 5) + 2;
+                var analysisRequiredHeight = 5 + 2 + calculateRequiredSpace(doc, statsComment, contentWidth, 5);
                 ensurePageSpace(cursor, analysisRequiredHeight);
                 doc.setFontSize(9.5);
                 doc.setFont(undefined, 'bold');
@@ -703,7 +703,7 @@
         }
 
         var synthesisComment = (comment || '').trim();
-        var synthesisRequiredHeight = 8 + 6 + calculateRequiredSpace(doc, synthesisComment, contentWidth, 3, 5) + 2;
+        var synthesisRequiredHeight = 8 + 6 + 2 + calculateRequiredSpace(doc, synthesisComment, contentWidth, 5);
         ensurePageSpace(cursor, synthesisRequiredHeight);
         doc.setDrawColor(203, 213, 225);
         doc.setLineWidth(0.3);
