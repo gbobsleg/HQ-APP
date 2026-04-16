@@ -831,7 +831,7 @@ function app() {
         },
 
         getAgentDisplayName(agent) {
-            return agent && agent['pr\u00e9nom'] && agent.nom ? `${agent.nom.toUpperCase()} ${agent['pr\u00e9nom']}` : '';
+            return agent && agent['pr\u00e9nom'] && agent.nom ? `${agent['pr\u00e9nom']} ${String(agent.nom).toUpperCase()}` : '';
         },
         getAgentById(id) {
             return this.allAgents.find(a => a.id === parseInt(id)) || null;
@@ -4323,9 +4323,30 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 subjectStr = String(templates.subject);
                 bodyStr = String(templates.body);
                 var agentName = (this.bilanForm.agentName != null) ? String(this.bilanForm.agentName) : '';
+                var activeAgent = this.getAgentById(this.agentContext.agentId);
+                var prenomAgent = (activeAgent && activeAgent['pr\u00e9nom']) ? String(activeAgent['pr\u00e9nom']) : '';
                 var campaignName = (this.agentContext.campaignName != null) ? String(this.agentContext.campaignName) : '';
-                var dateStr = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-                var synthese = (this.bilanForm.comment != null) ? String(this.bilanForm.comment) : '';
+                var entretienRaw = '';
+                if (this.bilanForm.evals && this.bilanForm.evals.length > 0) {
+                    var firstEval = this.bilanForm.evals[0];
+                    entretienRaw = (firstEval && firstEval.fileContent && firstEval.fileContent.date_communication)
+                        ? String(firstEval.fileContent.date_communication)
+                        : '';
+                }
+                var dateStr = 'Non renseignée';
+                if (entretienRaw) {
+                    var d = new Date(entretienRaw);
+                    if (!isNaN(d.getTime())) {
+                        var jj = String(d.getDate()).padStart(2, '0');
+                        var mm = String(d.getMonth() + 1).padStart(2, '0');
+                        var aaaa = d.getFullYear();
+                        dateStr = jj + '/' + mm + '/' + aaaa;
+                    }
+                }
+                var syntheseRaw = (this.bilanForm.comment != null) ? String(this.bilanForm.comment).trim() : '';
+                var synthese = syntheseRaw
+                    ? ['---', 'SYNTHÈSE', '---', '', syntheseRaw, '', '---'].join('\n')
+                    : '---\nSYNTHÈSE\n---\nNon renseignée\n---';
                 var noteStr = '';
                 if (campaignType === 'scoring' && this.evaluationEngine && typeof this.evaluationEngine.computeAgentAverage === 'function' && this.bilanForm.evals && this.bilanForm.evals.length > 0) {
                     var evalsPayloads = this.bilanForm.evals.map(function (e) { return e.fileContent || e; });
@@ -4333,8 +4354,20 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 } else if (campaignType === 'scoring') {
                     noteStr = '—';
                 }
-                subjectStr = subjectStr.replace(/\{\{agent\}\}/g, agentName).replace(/\{\{campagne\}\}/g, campaignName).replace(/\{\{date\}\}/g, dateStr).replace(/\{\{note\}\}/g, noteStr).replace(/\{\{synthese\}\}/g, synthese);
-                bodyStr = bodyStr.replace(/\{\{agent\}\}/g, agentName).replace(/\{\{campagne\}\}/g, campaignName).replace(/\{\{date\}\}/g, dateStr).replace(/\{\{note\}\}/g, noteStr).replace(/\{\{synthese\}\}/g, synthese);
+                subjectStr = subjectStr
+                    .replace(/\{\{agent\}\}/g, agentName)
+                    .replace(/\{\{prenom_agent\}\}/g, prenomAgent)
+                    .replace(/\{\{campagne\}\}/g, campaignName)
+                    .replace(/\{\{date\}\}/g, dateStr)
+                    .replace(/\{\{note\}\}/g, noteStr)
+                    .replace(/\{\{synthese\}\}/g, synthese);
+                bodyStr = bodyStr
+                    .replace(/\{\{agent\}\}/g, agentName)
+                    .replace(/\{\{prenom_agent\}\}/g, prenomAgent)
+                    .replace(/\{\{campagne\}\}/g, campaignName)
+                    .replace(/\{\{date\}\}/g, dateStr)
+                    .replace(/\{\{note\}\}/g, noteStr)
+                    .replace(/\{\{synthese\}\}/g, synthese);
             } else {
                 subjectStr = 'Bilan Qualité - ' + (this.bilanForm.agentName || '');
                 bodyStr = 'Bonjour,\n\nVeuillez trouver ci-joint ton bilan qualité.\n\nSynthèse :\n' + (this.bilanForm.comment || '') + '\n\nCordialement.';
