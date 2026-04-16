@@ -14,8 +14,10 @@
      */
     function formatMmSs(val) {
         if (isNaN(val)) return '00:00';
-        var m = Math.floor(Math.abs(val) / 60);
-        var s = Math.round(Math.abs(val) % 60);
+        var absVal = Math.abs(val);
+        var totalSeconds = Math.round(absVal);
+        var m = Math.floor(totalSeconds / 60);
+        var s = totalSeconds % 60;
         var sign = val < 0 ? '-' : '';
         return sign + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
     }
