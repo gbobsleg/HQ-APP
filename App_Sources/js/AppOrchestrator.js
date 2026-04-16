@@ -4345,8 +4345,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 }
                 var syntheseRaw = (this.bilanForm.comment != null) ? String(this.bilanForm.comment).trim() : '';
                 var synthese = syntheseRaw
-                    ? ['---', 'SYNTHÈSE', '---', '', syntheseRaw, '', '---'].join('\n')
-                    : '---\nSYNTHÈSE\n---\nNon renseignée\n---';
+                    ? ['---', syntheseRaw, '---'].join('\n')
+                    : '---\nNon renseignée\n---';
                 var noteStr = '';
                 if (campaignType === 'scoring' && this.evaluationEngine && typeof this.evaluationEngine.computeAgentAverage === 'function' && this.bilanForm.evals && this.bilanForm.evals.length > 0) {
                     var evalsPayloads = this.bilanForm.evals.map(function (e) { return e.fileContent || e; });
