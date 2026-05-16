@@ -205,6 +205,20 @@
                 }
             });
         };
+        var _lastProdDto = null;
+
+        function refreshProdTelOnly() {
+            var container = document.getElementById('production-charts-container');
+            var view = window.HQApp && window.HQApp.ProductionChartsView;
+            if (!container || !view || !_lastProdDto || typeof view.renderProdTelephone !== 'function') return;
+            var store = window.Alpine && window.Alpine.store && window.Alpine.store('dashboard');
+            var offer = store ? (store.prodSelectedOffer || '') : '';
+            var dtoFiltered = filterProductionDtoByOffer(_lastProdDto, offer);
+            var telRow = (dtoFiltered.production && dtoFiltered.production.telephone && dtoFiltered.production.telephone[0]) || null;
+            view.renderProdTelephone(container, telRow);
+        }
+        window.refreshProdTelOnly = refreshProdTelOnly;
+
         function refreshProdFromStore(rootHandle, allAgents) {
             var s = window.Alpine && window.Alpine.store('dashboard');
             if (!s) return;
@@ -324,6 +338,7 @@
                 var dto = (typeof repo.aggregatePerimeterStats === 'function')
                     ? repo.aggregatePerimeterStats(production || {}, agentIdsArray)
                     : { production: production || {} };
+                _lastProdDto = dto;
                 var availableOffers = getAvailableOffersFromDto(dto);
                 var effectiveOffer = requestedOffer;
                 if (effectiveOffer && availableOffers.indexOf(effectiveOffer) === -1) {
@@ -709,14 +724,14 @@
                         <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Téléphone</h2>
                         <div class="flex gap-1.5 shrink-0">
                             <button type="button"
-                                @click="$store.dashboard.prodSelectedOffer = ''; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
+                                @click="$store.dashboard.prodSelectedOffer = ''; refreshProdTelOnly(); updateDashboardUrl()"
                                 :class="$store.dashboard.prodSelectedOffer === '' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                                 class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap">
                                 Global
                             </button>
                             <template x-for="offer in ($store.dashboard.prodAvailableOffers || [])" :key="offer">
                                 <button type="button"
-                                    @click="$store.dashboard.prodSelectedOffer = offer; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
+                                    @click="$store.dashboard.prodSelectedOffer = offer; refreshProdTelOnly(); updateDashboardUrl()"
                                     :class="$store.dashboard.prodSelectedOffer === offer ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                                     class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap"
                                     x-text="offer"></button>
@@ -726,13 +741,19 @@
                     </div>
 
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
-                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Temps (s)</h3>
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Temps (s)</h3>
+                            <div id="prod-tel-dmt-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                        </div>
                         <div class="flex-1 relative min-h-0">
                             <canvas id="prod-telephone-dmt"></canvas>
                         </div>
                     </div>
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
-                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Efficacité</h3>
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">Téléphone - Efficacité</h3>
+                            <div id="prod-tel-badges" class="flex gap-2 text-[10px] font-bold"></div>
+                        </div>
                         <div class="flex-1 relative min-h-0">
                             <canvas id="prod-telephone"></canvas>
                         </div>

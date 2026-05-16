@@ -654,7 +654,9 @@
                                     ],
                                     backgroundColor: '#06b6d4',
                                     borderRadius: 4,
-                                    yAxisID: 'y'
+                                    yAxisID: 'y',
+                                    skipNull: true,
+                                    order: 2
                                 },
                                 {
                                     label: 'Agent (Taux %)',
@@ -665,7 +667,9 @@
                                     ],
                                     backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
                                     borderRadius: 4,
-                                    yAxisID: 'y1'
+                                    yAxisID: 'y1',
+                                    skipNull: true,
+                                    order: 2
                                 },
                                 {
                                     type: 'line',
@@ -683,6 +687,7 @@
                                     pointHoverRadius: 25,
                                     showLine: false,
                                     yAxisID: 'y',
+                                    order: 1,
                                     datalabels: {
                                         align: 'right',
                                         anchor: 'center',
@@ -714,6 +719,7 @@
                                     pointHoverRadius: 25,
                                     showLine: false,
                                     yAxisID: 'y1',
+                                    order: 1,
                                     datalabels: {
                                         align: 'right',
                                         anchor: 'center',

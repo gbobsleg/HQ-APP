@@ -12,6 +12,7 @@
     var chartInstances = [];
     var UI = global.HQApp && global.HQApp.UIComponents ? global.HQApp.UIComponents : null;
     var formatMmSs = UI && typeof UI.formatMmSs === 'function' ? UI.formatMmSs : function () { return '00:00'; };
+    var formatDecimalHours = UI && typeof UI.formatDecimalHours === 'function' ? UI.formatDecimalHours : function (v) { return (v || 0).toFixed(1) + ' h'; };
 
     var CHART_X_AXIS_TICKS = {
         autoSkip: false,
@@ -39,6 +40,20 @@
         };
         if (callback) ticks.callback = callback;
         return ticks;
+    }
+
+    /**
+     * Détruit l'instance Chart d'un canvas spécifique et la retire du registre.
+     * @param {string} canvasId
+     */
+    function destroyCanvasChart(canvasId) {
+        var canvas = document.getElementById(canvasId);
+        if (!canvas || !ChartLib) return;
+        var existing = ChartLib.getChart(canvas);
+        if (existing) {
+            existing.destroy();
+            chartInstances = chartInstances.filter(function (ch) { return ch !== existing; });
+        }
     }
 
     /**
@@ -161,18 +176,33 @@
      * @param {HTMLElement} containerEl
      * @param {{ production: { telephone: Array, courriels: Array, watt: Array, wattDetail: Array }, planning?: { etats: object } }} data
      */
-    function renderProductionDashboard(containerEl, data) {
-        destroy(containerEl);
+    /**
+     * Recrée uniquement les charts et le tableau Téléphone, sans toucher aux autres.
+     * Peut être appelé seul lors d'un changement de filtre offre.
+     * @param {HTMLElement} containerEl
+     * @param {Object|null} telRow - Ligne téléphone agrégée (déjà filtrée par offre)
+     */
+    function renderProdTelephone(containerEl, telRow) {
         if (!containerEl || !ChartLib) return;
 
-        data = data || {};
-        var production = data.production || {};
-        var planning = data.planning || {};
-        var planningEtats = planning.etats || {};
-        var telRow = (production.telephone && production.telephone[0]) ? production.telephone[0] : null;
-        var courRow = (production.courriels && production.courriels[0]) ? production.courriels[0] : null;
-        var wattRow = (production.watt && production.watt[0]) ? production.watt[0] : null;
-        var wattDetail = Array.isArray(production.wattDetail) ? production.wattDetail : [];
+        destroyCanvasChart('prod-telephone');
+        destroyCanvasChart('prod-telephone-dmt');
+
+        // --- Badges DMMG / Transferts / Consultations / RONA ---
+        var dmtBadgesEl = containerEl.querySelector('#prod-tel-dmt-badges');
+        if (dmtBadgesEl) {
+            dmtBadgesEl.innerHTML = telRow
+                ? '<span class="bg-amber-100 text-amber-700 px-2 py-1 rounded" title="Durée Moyenne de Mise en Garde">DMMG: ' + formatMmSs(parseFloat(telRow.dmmg) || 0) + '</span>'
+                : '';
+        }
+        var badgesEl = containerEl.querySelector('#prod-tel-badges');
+        if (badgesEl) {
+            badgesEl.innerHTML = telRow
+                ? '<span class="bg-slate-100 text-slate-600 px-2 py-1 rounded">Transferts: ' + (parseFloat(telRow.transferts) || 0) + '</span>' +
+                  '<span class="bg-slate-100 text-slate-600 px-2 py-1 rounded">Consultations: ' + (parseFloat(telRow.consultations) || 0) + '</span>' +
+                  '<span class="bg-rose-100 text-rose-700 px-2 py-1 rounded">RONA: ' + (parseFloat(telRow.rona) || 0) + '</span>'
+                : '';
+        }
 
         // --- Graphique Téléphone - Efficacité ---
         var canvasTel = getCanvas('prod-telephone', containerEl);
@@ -192,14 +222,16 @@
                                 data: [parseFloat(telRow.appels_traites) || 0, null, null],
                                 backgroundColor: '#06b6d4',
                                 borderRadius: 4,
-                                yAxisID: 'y'
+                                yAxisID: 'y',
+                                skipNull: true
                             },
                             {
                                 label: 'Équipe (Taux %)',
                                 data: [null, (parseFloat(telRow.identifications) || 0) * 100, (parseFloat(telRow.reponses_immediates) || 0) * 100],
                                 backgroundColor: ['transparent', '#8b5cf6', '#3b82f6'],
                                 borderRadius: 4,
-                                yAxisID: 'y1'
+                                yAxisID: 'y1',
+                                skipNull: true
                             }
                         ]
                     },
@@ -304,6 +336,40 @@
             }
         }
 
+        // --- Tableau Téléphone ---
+        var telTableContainer = containerEl.querySelector('#prod-tel-table-container');
+        if (telTableContainer && UI && typeof UI.buildTelephoneTableHtml === 'function') {
+            var offresList = (telRow && telRow.offres && Array.isArray(telRow.offres)) ? telRow.offres : [];
+            var telHtml = telRow ? UI.buildTelephoneTableHtml(offresList, telRow, null, null) : '';
+            if (telHtml) {
+                telTableContainer.innerHTML = telHtml;
+                telTableContainer.classList.remove('hidden');
+                telTableContainer.classList.add('block');
+            } else {
+                telTableContainer.classList.add('hidden');
+                telTableContainer.classList.remove('block');
+            }
+            if (typeof UI.initCollapsibleTableToggles === 'function') {
+                UI.initCollapsibleTableToggles(containerEl, false, ['prod-tel-table-container']);
+            }
+        }
+    }
+
+    function renderProductionDashboard(containerEl, data) {
+        destroy(containerEl);
+        if (!containerEl || !ChartLib) return;
+
+        data = data || {};
+        var production = data.production || {};
+        var planning = data.planning || {};
+        var planningEtats = planning.etats || {};
+        var telRow = (production.telephone && production.telephone[0]) ? production.telephone[0] : null;
+        var courRow = (production.courriels && production.courriels[0]) ? production.courriels[0] : null;
+        var wattRow = (production.watt && production.watt[0]) ? production.watt[0] : null;
+        var wattDetail = Array.isArray(production.wattDetail) ? production.wattDetail : [];
+
+        renderProdTelephone(containerEl, telRow);
+
         // --- Graphique Courriels ---
         var canvasCour = getCanvas('prod-courriels-volumes', containerEl);
         if (canvasCour) {
@@ -387,20 +453,6 @@
         }
 
         // --- Tableaux (UIComponents) ---
-        var telTableContainer = containerEl.querySelector('#prod-tel-table-container');
-        if (telTableContainer && telRow && UI && typeof UI.buildTelephoneTableHtml === 'function') {
-            var offresList = (telRow && telRow.offres && Array.isArray(telRow.offres)) ? telRow.offres : [];
-            var telHtml = UI.buildTelephoneTableHtml(offresList, telRow, null, null);
-            if (telHtml) {
-                telTableContainer.innerHTML = telHtml;
-                telTableContainer.classList.remove('hidden');
-                telTableContainer.classList.add('block');
-            } else {
-                telTableContainer.classList.add('hidden');
-                telTableContainer.classList.remove('block');
-            }
-        }
-
         var wattTableContainer = containerEl.querySelector('#prod-watt-table-container');
         if (wattTableContainer && UI && typeof UI.buildWattTableHtml === 'function') {
             var wHtml = UI.buildWattTableHtml(wattDetail);
@@ -415,7 +467,7 @@
         }
 
         if (UI && typeof UI.initCollapsibleTableToggles === 'function') {
-            UI.initCollapsibleTableToggles(containerEl, false, ['prod-tel-table-container', 'prod-watt-table-container']);
+            UI.initCollapsibleTableToggles(containerEl, false, ['prod-watt-table-container']);
         }
 
         // --- Graphique Planning Production (heures par état) ---
@@ -452,8 +504,9 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: { padding: { top: 30 } },
                     scales: {
-                        x: { ticks: CHART_X_AXIS_TICKS },
+                        x: { ticks: Object.assign({}, CHART_X_AXIS_TICKS, { maxRotation: 45, minRotation: 45 }) },
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: 'Heures', color: '#94a3b8', font: { size: 11, weight: '600' } },
@@ -467,7 +520,7 @@
                                 label: function (ctx) {
                                     var v = ctx.parsed.y || 0;
                                     var pct = totalPlanningHours > 0 ? ((v / totalPlanningHours) * 100).toFixed(1) : 0;
-                                    return v.toFixed(2) + ' h (' + pct + '%)';
+                                    return formatDecimalHours(v) + ' (' + pct + '%)';
                                 }
                             }
                         },
@@ -479,7 +532,7 @@
                             formatter: function (v) {
                                 if (!v || v === 0) return '';
                                 var pct = totalPlanningHours > 0 ? Math.round((v / totalPlanningHours) * 100) : 0;
-                                return v.toFixed(1) + ' h (' + pct + '%)';
+                                return formatDecimalHours(v) + ' (' + pct + '%)';
                             }
                         }
                     }
@@ -491,6 +544,7 @@
 
     global.HQApp.ProductionChartsView = {
         renderProductionDashboard: renderProductionDashboard,
+        renderProdTelephone: renderProdTelephone,
         destroy: destroy
     };
 })(typeof window !== 'undefined' ? window : this);
