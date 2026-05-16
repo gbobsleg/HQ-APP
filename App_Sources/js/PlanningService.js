@@ -79,11 +79,22 @@ class PlanningService {
         if (!line.trim()) continue;
 
         const rowObj = this._parseRow(line, headers);
-        if (!rowObj || !this._isDetailRow(rowObj)) continue;
+        const isDetail  = rowObj != null && this._isDetailRow(rowObj);
+        const isSummary = !isDetail && rowObj != null && this._isSummaryRow(rowObj);
+        if (!isDetail && !isSummary) continue;
 
-        const startStr = (rowObj['Heure de début'] || '').trim();
-        const endStr = (rowObj['Heure de fin'] || '').trim();
-        const durationHours = this._calculateDuration(startStr, endStr, 'hours');
+        let durationHours;
+        let startStr = '';
+        let endStr   = '';
+
+        if (isDetail) {
+          startStr = (rowObj['Heure de début'] || '').trim();
+          endStr   = (rowObj['Heure de fin']   || '').trim();
+          durationHours = this._calculateDuration(startStr, endStr, 'hours');
+        } else {
+          const totalStr = ((rowObj["Total d'heures"] || rowObj['Total heures'] || '') + '').trim();
+          durationHours = this._parseTotalHeures(totalStr);
+        }
 
         if (durationHours > 0) {
           detailRows.push({
@@ -219,6 +230,22 @@ class PlanningService {
   }
 
   /**
+   * Détermine si une ligne est une récapitulative autonome (journée entière sans sous-événements).
+   * Critère : Total d'heures renseigné ET Heure de début/fin toutes deux vides.
+   * @param {Record<string, string>} rowObj
+   * @returns {boolean}
+   * @private
+   */
+  _isSummaryRow(rowObj) {
+    if (!rowObj) return false;
+    const total = ((rowObj["Total d'heures"] != null ? rowObj["Total d'heures"] : rowObj['Total heures'] || '') + '').trim();
+    if (total === '') return false;
+    const start = (rowObj['Heure de début'] || '').trim();
+    const end   = (rowObj['Heure de fin']   || '').trim();
+    return start === '' && end === '';
+  }
+
+  /**
    * Convertit une heure HH:MM en nombre de minutes depuis minuit.
    * Retourne null si le format est invalide.
    * @param {string} timeStr
@@ -248,6 +275,23 @@ class PlanningService {
     }
 
     return hours * 60 + minutes;
+  }
+
+  /**
+   * Parse une durée au format HH:MM (ex. "8:00") en heures décimales.
+   * Contrairement à _parseTime, autorise des heures > 23.
+   * @param {string} str
+   * @returns {number} Heures décimales. 0 si invalide.
+   * @private
+   */
+  _parseTotalHeures(str) {
+    if (!str || typeof str !== 'string') return 0;
+    const parts = str.trim().split(':');
+    if (parts.length !== 2) return 0;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || m < 0 || m > 59) return 0;
+    return h + m / 60;
   }
 
   /**
