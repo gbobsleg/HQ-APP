@@ -352,7 +352,14 @@
                 try {
                     var appInstance = window.HQAppAppInstance;
                     if (appInstance && typeof appInstance.getFilteredPlanningStats === 'function') {
-                        planningStats = appInstance.getFilteredPlanningStats(dateFrom || '', dateTo || '', null) || { etats: {} };
+                        var allowedAgentNames = null;
+                        if (perimeter === 'site' && selectedSiteId != null && selectedSiteId !== '') {
+                            var sid2 = Number(selectedSiteId);
+                            allowedAgentNames = agentsList
+                                .filter(function(a) { return Number(a.siteId) === sid2; })
+                                .map(function(a) { return (String(a.nom || '').toUpperCase() + ' ' + (a['prénom'] || '')).trim(); });
+                        }
+                        planningStats = appInstance.getFilteredPlanningStats(dateFrom || '', dateTo || '', null, allowedAgentNames) || { etats: {} };
                     }
                 } catch (e) {
                     console.error('[Planning] Crash intercepté dans dashboard (production) :', e);

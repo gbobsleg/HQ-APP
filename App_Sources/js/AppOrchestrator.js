@@ -4452,7 +4452,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         },
 
         // --- Planning : filtrage global / agent 360 ---
-        getFilteredPlanningStats(startDateStr, endDateStr, agentName = null) {
+        getFilteredPlanningStats(startDateStr, endDateStr, agentName = null, allowedAgentNames = null) {
             var self = this;
             console.groupCollapsed('[Planning] Filtrage des données');
             console.log('1. Paramètres -> Agent:', agentName, '| Du:', startDateStr, 'Au:', endDateStr);
@@ -4465,10 +4465,28 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             var fromIso = (startDateStr || '').trim();
             var toIso = (endDateStr || '').trim();
 
+            // Normalisation partagée : compare "COLAS Christine" et "Christine COLAS" de façon équivalente
+            var normalizeName = function(n) {
+                if (!n) return '';
+                var clean = n.toLowerCase()
+                             .replace(/[àáâäãå]/g, 'a').replace(/[èéêë]/g, 'e')
+                             .replace(/[ìíîï]/g, 'i').replace(/[òóôö]/g, 'o')
+                             .replace(/[ùúûü]/g, 'u').replace(/[ç]/g, 'c')
+                             .replace(/[-_]/g, ' ').trim();
+                return clean.split(/\s+/).sort().join(' ');
+            };
+
+            // Set des noms normalisés autorisés (filtre périmètre Site)
+            var allowedSet = null;
+            if (Array.isArray(allowedAgentNames) && allowedAgentNames.length > 0) {
+                allowedSet = new Set(allowedAgentNames.map(normalizeName));
+            }
+
             // 1. VUE GLOBALE (Strictement si agentName est null)
             if (agentName === null) {
                 var globalEtats = {};
                 Object.keys(agents).forEach((name) => {
+                    if (allowedSet && !allowedSet.has(normalizeName(name))) return;
                     var ag = agents[name] || {};
                     Object.keys(ag.states || {}).forEach((stateName) => {
                         var state = ag.states[stateName] || {};
@@ -4498,17 +4516,6 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 console.groupEnd();
                 return { etats: {} }; // Sécurité anti-fuite globale
             }
-
-            // Normalisation pour comparer "COLAS Christine" et "Christine COLAS"
-            var normalizeName = function(n) {
-                if (!n) return '';
-                var clean = n.toLowerCase()
-                             .replace(/[àáâäãå]/g, 'a').replace(/[èéêë]/g, 'e')
-                             .replace(/[ìíîï]/g, 'i').replace(/[òóôö]/g, 'o')
-                             .replace(/[ùúûü]/g, 'u').replace(/[ç]/g, 'c')
-                             .replace(/[-_]/g, ' ').trim();
-                return clean.split(/\s+/).sort().join(' ');
-            };
 
             var searchNorm = normalizeName(agentName);
             var targetAgentKey = null;
