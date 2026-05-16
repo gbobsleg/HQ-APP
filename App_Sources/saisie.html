@@ -405,19 +405,27 @@
                                         </div>
 
                                         <div class="mt-3 overflow-x-auto">
-                                            <table class="w-full text-left text-[10px] min-w-[420px] border border-slate-200 rounded-xl overflow-hidden">
+                                            <table class="w-full text-left text-[10px] min-w-[720px] border border-slate-200 rounded-xl overflow-hidden">
                                                 <thead class="bg-white">
                                                     <tr class="text-slate-500 uppercase font-black tracking-widest">
                                                         <th class="px-2 py-1">Clôture</th>
                                                         <th class="px-2 py-1">Envoi WATT</th>
-                                                        <th class="px-2 py-1">Réponse directe</th>
+                                                        <th class="px-2 py-1">Réponses</th>
+                                                        <th class="px-2 py-1">AR Qualité</th>
+                                                        <th class="px-2 py-1">Transfert</th>
+                                                        <th class="px-2 py-1">Env. validation</th>
+                                                        <th class="px-2 py-1">Refus</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody class="bg-white divide-y divide-slate-100">
                                                     <tr :class="form.stats_snapshot.metrics.courriels.hidden ? 'opacity-50' : ''">
                                                         <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.cloture || 0"></td>
                                                         <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.envoi_watt || 0"></td>
-                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.reponse_directe || 0"></td>
+                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.reponses || 0"></td>
+                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.ar_qualite || 0"></td>
+                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.transfert || 0"></td>
+                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.envoye_validation || 0"></td>
+                                                        <td class="px-2 py-1 font-bold" x-text="form.stats_snapshot.metrics.courriels.global.refus || 0"></td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -893,12 +901,14 @@
                     </div>
                 </div>
                 <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                     <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                     <div class="flex-1 relative min-h-0">
-                        <canvas id="agent360-courriels-volumes"></canvas>
+                        <canvas id="agent360-courriels-volumes" class="min-h-[240px]"></canvas>
                     </div>
                 </div>
+                <!-- Tableau détail Courriels par jour : col-span-2 -->
+                <div id="agent360-courriels-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                     <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
                     <div class="flex-1 relative min-h-0">
@@ -906,16 +916,16 @@
                     </div>
                 </div>
                 <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
-                <!-- Planning – Répartition des états -->
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
-                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Répartition des états</h3>
-                    <div class="flex-1 relative min-h-0">
-                        <canvas id="planning360Chart"></canvas>
+                <!-- Planning : graphique + tableau détail côte à côte -->
+                <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 min-h-0">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Répartition des états</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="planning360Chart"></canvas>
+                        </div>
                     </div>
+                    <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 min-h-0 hidden"></div>
                 </div>
-
-                <!-- Tableau détail Planning -->
-                <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 hidden"></div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
                     <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Évolution Qualité</h3>
                     <div class="flex-1 relative min-h-0">

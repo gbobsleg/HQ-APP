@@ -588,14 +588,18 @@
                     var courBody = [[
                         fmtNum(courGlobal.cloture, 0),
                         fmtNum(courGlobal.envoi_watt, 0),
-                        fmtNum(courGlobal.reponse_directe, 0)
+                        fmtNum(courGlobal.reponses, 0),
+                        fmtNum(courGlobal.ar_qualite, 0),
+                        fmtNum(courGlobal.transfert, 0),
+                        fmtNum(courGlobal.envoye_validation, 0),
+                        fmtNum(courGlobal.refus, 0)
                     ]];
 
                     doc.autoTable({
                         startY: cursor.y,
                         margin: { left: margin, right: margin },
                         tableWidth: contentWidth,
-                        head: [[ "Clôture", "Envoi WATT", "Réponse directe" ]],
+                        head: [[ "Clôture", "Envoi WATT", "Réponses", "AR Qualité", "Transfert", "Env. validation", "Refus" ]],
                         body: courBody,
                         styles: { fontSize: 8, cellPadding: 1.8, textColor: 30 },
                         headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },

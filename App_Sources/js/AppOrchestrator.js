@@ -1789,13 +1789,25 @@ function app() {
                     }))
                     : [];
 
-                const zeroCour = { cloture: 0, envoi_watt: 0, reponse_directe: 0 };
+                const zeroCour = {
+                    cloture: 0,
+                    envoi_watt: 0,
+                    reponses: 0,
+                    ar_qualite: 0,
+                    transfert: 0,
+                    envoye_validation: 0,
+                    refus: 0
+                };
                 const mapCourGlobal = (row) => {
                     if (!row) return Object.assign({}, zeroCour);
                     return {
                         cloture: toInt(row.cloture),
                         envoi_watt: toInt(row.envoi_watt),
-                        reponse_directe: toInt(row.reponse_directe)
+                        reponses: toInt(row.reponses),
+                        ar_qualite: toInt(row.ar_qualite),
+                        transfert: toInt(row.transfert),
+                        envoye_validation: toInt(row.envoye_validation),
+                        refus: toInt(row.refus)
                     };
                 };
                 const courGlobal = mapCourGlobal(mailRow);
@@ -3015,7 +3027,15 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     ? (perimeterDto.production.courriels[0] || null)
                     : null;
                 if (e) {
-                    performanceBlock.push("- Courriels : volume évalué -> clôture=" + Math.round(e.cloture || 0) + ", envoi_watt=" + Math.round(e.envoi_watt || 0) + ", reponse_directe=" + Math.round(e.reponse_directe || 0) + ".");
+                    performanceBlock.push(
+                        "- Courriels : volume évalué -> clôture=" + Math.round(e.cloture || 0)
+                        + ", envoi_watt=" + Math.round(e.envoi_watt || 0)
+                        + ", reponses=" + Math.round(e.reponses || 0)
+                        + ", ar_qualite=" + Math.round(e.ar_qualite || 0)
+                        + ", transfert=" + Math.round(e.transfert || 0)
+                        + ", envoye_validation=" + Math.round(e.envoye_validation || 0)
+                        + ", refus=" + Math.round(e.refus || 0) + "."
+                    );
                     if (cAgent) evolutionBlock.push("- Courriels : comparaison disponible (volumes informatifs seulement, ne pas conclure sur les écarts de volume).");
                     if (p) benchmarkBlock.push("- Courriels : moyenne du périmètre disponible (volumes informatifs seulement).");
                 }

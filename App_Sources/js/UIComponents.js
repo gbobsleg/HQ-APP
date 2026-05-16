@@ -93,7 +93,6 @@
             '</tr></thead>';
         html += '<tbody class="divide-y divide-gray-100">';
 
-        // Lignes par offre
         offresTriees.forEach(function (o) {
             var avg;
             if (regionAcc && accToAvg) {
@@ -114,7 +113,6 @@
             html += '</tr>';
         });
 
-        // Agrégat GLOBAL restreint au périmètre des offres listées (même logique que 360°)
         var agentOffreNames = offresTriees.map(function (o) { return o.offre; });
         var combinedAcc = {
             dmtSum: 0, dmtW: 0,
@@ -140,7 +138,6 @@
             dmt: 0, dmc: 0, dmpa: 0, identifications: 0, reponses_immediates: 0, appels_traites: 0
         };
 
-        // Ligne TOTAL
         html += '<tr class="bg-blue-50 font-bold border-t-2 border-blue-200">';
         html += '<td class="px-4 py-3 text-blue-800 whitespace-nowrap">TOTAL</td>';
         html += '<td class="px-4 py-3 text-right text-blue-800">' + (Math.round(telRowGlobal.appels_traites) || 0) + '</td>';
@@ -156,9 +153,8 @@
 
     /**
      * Construit le HTML du tableau Watt (détail par circuit).
-     * Fonction pure : ne touche pas au DOM.
      * @param {Array} agentWattRows - Lignes Watt (filtrées/agrégées)
-     * @returns {string} HTML complet du tableau, ou chaîne vide si aucune donnée exploitable
+     * @returns {string}
      */
     function buildWattTableHtml(agentWattRows) {
         if (!agentWattRows || !Array.isArray(agentWattRows) || agentWattRows.length === 0) {
@@ -208,6 +204,138 @@
     }
 
     /**
+     * Formate une date ISO (YYYY-MM-DD) en format français (DD/MM/YYYY).
+     * @param {string} isoDate
+     * @returns {string}
+     */
+    function formatDateFR(isoDate) {
+        if (!isoDate || typeof isoDate !== 'string') return isoDate || '';
+        var parts = isoDate.split('-');
+        if (parts.length !== 3) return isoDate;
+        return parts[2] + '/' + parts[1] + '/' + parts[0];
+    }
+
+    /**
+     * Tableau courriels – détail par jour (une ligne par date).
+     * @param {Array<{agentId, date, cloture, envoi_watt, reponses, ar_qualite, transfert, envoye_validation, refus}>} dailyRows
+     * @returns {string} HTML ou chaîne vide si aucune donnée
+     */
+    function buildCourrielsDetailTableHtml(dailyRows) {
+        if (!dailyRows || !Array.isArray(dailyRows) || dailyRows.length === 0) return '';
+
+        var cols = [
+            { key: 'cloture',           label: 'Clôture' },
+            { key: 'envoi_watt',        label: 'Envoi WATT' },
+            { key: 'reponses',          label: 'Réponses' },
+            { key: 'ar_qualite',        label: 'AR Qualité' },
+            { key: 'transfert',         label: 'Transfert' },
+            { key: 'envoye_validation', label: 'Env. validation' },
+            { key: 'refus',             label: 'Refus' }
+        ];
+
+        // Exclure les lignes dont tous les volumes sont 0
+        var rows = dailyRows.filter(function (r) {
+            if (!r) return false;
+            return cols.some(function (c) { return (parseFloat(r[c.key]) || 0) > 0; });
+        });
+        if (rows.length === 0) return '';
+
+        // Tri chronologique (tri lexicographique sur YYYY-MM-DD)
+        rows = rows.slice().sort(function (a, b) {
+            return (a.date || '') < (b.date || '') ? -1 : (a.date || '') > (b.date || '') ? 1 : 0;
+        });
+
+        var th = function (t, align) {
+            var cls = align === 'left'
+                ? 'px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider'
+                : 'px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider';
+            return '<th class="' + cls + '">' + t + '</th>';
+        };
+        var tdR = function (v) {
+            return '<td class="px-4 py-3 text-right text-gray-700 whitespace-nowrap">' + v + '</td>';
+        };
+
+        var totals = {};
+        cols.forEach(function (c) { totals[c.key] = 0; });
+
+        var html = '<div class="agent360-table-header flex items-center justify-between px-6 py-3 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-50 rounded-t-3xl" role="button" tabindex="0" aria-expanded="true">'
+            + '<p class="text-xs font-black text-slate-400 uppercase tracking-widest">Courriels – Détail par jour</p>'
+            + '<span class="agent360-chevron text-slate-400 transition-transform inline-block">▼</span>'
+            + '</div>';
+        html += '<div class="agent360-table-body overflow-x-auto"><table class="min-w-full w-full text-sm">';
+        html += '<thead class="bg-gray-50"><tr>' + th('Date', 'left');
+        cols.forEach(function (c) { html += th(c.label); });
+        html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+
+        rows.forEach(function (r) {
+            html += '<tr class="hover:bg-gray-50">';
+            html += '<td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">' + formatDateFR(r.date) + '</td>';
+            cols.forEach(function (c) {
+                var v = Math.round(parseFloat(r[c.key]) || 0);
+                totals[c.key] += v;
+                html += tdR(v);
+            });
+            html += '</tr>';
+        });
+
+        html += '<tr class="bg-blue-50 font-bold border-t-2 border-blue-200">';
+        html += '<td class="px-4 py-3 text-blue-800 whitespace-nowrap">TOTAL</td>';
+        cols.forEach(function (c) {
+            html += '<td class="px-4 py-3 text-right text-blue-800">' + totals[c.key] + '</td>';
+        });
+        html += '</tr></tbody></table></div>';
+
+        return html;
+    }
+
+    /**
+     * Tableau détail planning par état.
+     * @param {string[]} planningLabels
+     * @param {number[]} planningValues
+     * @returns {string}
+     */
+    function buildPlanningTableHtml(planningLabels, planningValues) {
+        if (!planningLabels || !planningLabels.length) return '';
+
+        var rows = [];
+        var total = 0;
+        for (var pi = 0; pi < planningLabels.length; pi++) {
+            var pv = parseFloat(planningValues[pi]) || 0;
+            if (pv <= 0) continue;
+            rows.push({ label: planningLabels[pi], value: pv });
+            total += pv;
+        }
+        if (rows.length === 0) return '';
+
+        rows.sort(function (a, b) { return b.value - a.value; });
+
+        var html = '<div class="agent360-table-header flex items-center justify-between px-6 py-3 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-50 rounded-t-3xl" role="button" tabindex="0" aria-expanded="true"><p class="text-xs font-black text-slate-400 uppercase tracking-widest">Planning – Détail par état</p><span class="agent360-chevron text-slate-400 transition-transform inline-block">▼</span></div>';
+        html += '<div class="agent360-table-body"><table class="min-w-full w-full text-sm">';
+        html += '<thead class="bg-gray-50"><tr>';
+        html += '<th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">État</th>';
+        html += '<th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Heures</th>';
+        html += '<th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">%</th>';
+        html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+
+        rows.forEach(function (item) {
+            var pct = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
+            html += '<tr class="hover:bg-gray-50">';
+            html += '<td class="px-4 py-3 font-medium text-gray-900">' + item.label + '</td>';
+            html += '<td class="px-4 py-3 text-right font-bold text-indigo-600">' + formatDecimalHours(item.value) + '</td>';
+            html += '<td class="px-4 py-3 text-right text-gray-600">' + pct + '%</td>';
+            html += '</tr>';
+        });
+
+        html += '<tr class="bg-blue-50 font-bold border-t-2 border-blue-200">';
+        html += '<td class="px-4 py-3 text-blue-800">TOTAL</td>';
+        html += '<td class="px-4 py-3 text-right text-blue-800">' + formatDecimalHours(total) + '</td>';
+        html += '<td class="px-4 py-3 text-right text-blue-800">100%</td>';
+        html += '</tr></tbody></table></div>';
+
+        return html;
+    }
+
+    /**
      * Initialise le repli/dépliage des sections tableaux.
      * @param {HTMLElement} containerEl
      * @param {boolean} expandedByDefault
@@ -244,7 +372,8 @@
         deltaHtml: deltaHtml,
         buildTelephoneTableHtml: buildTelephoneTableHtml,
         buildWattTableHtml: buildWattTableHtml,
+        buildCourrielsDetailTableHtml: buildCourrielsDetailTableHtml,
+        buildPlanningTableHtml: buildPlanningTableHtml,
         initCollapsibleTableToggles: initCollapsibleTableToggles
     };
 })(typeof window !== 'undefined' ? window : this);
-

@@ -13,6 +13,34 @@
     var UI = global.HQApp && global.HQApp.UIComponents ? global.HQApp.UIComponents : null;
     var formatMmSs = UI && typeof UI.formatMmSs === 'function' ? UI.formatMmSs : function () { return '00:00'; };
 
+    var CHART_X_AXIS_TICKS = {
+        autoSkip: false,
+        maxRotation: 0,
+        minRotation: 0,
+        color: '#64748b',
+        font: { size: 11, weight: '600' }
+    };
+    var CHART_Y_AXIS_TICKS = {
+        color: '#64748b',
+        font: { size: 11, weight: '600' }
+    };
+    var CHART_DATALABELS_FONT = { weight: 'bold', size: 11 };
+    var CHART_LEGEND_LABELS = {
+        color: '#64748b',
+        font: { size: 11, weight: '600' },
+        usePointStyle: true,
+        boxWidth: 10
+    };
+
+    function yAxisTicks(callback) {
+        var ticks = {
+            color: CHART_Y_AXIS_TICKS.color,
+            font: CHART_Y_AXIS_TICKS.font
+        };
+        if (callback) ticks.callback = callback;
+        return ticks;
+    }
+
     /**
      * Détruit toutes les instances Chart créées par ce module.
      * @param {HTMLElement} [containerEl] - Optionnel.
@@ -92,9 +120,23 @@
         return total <= 0;
     }
 
+    var COURRIELS_METRIC_KEYS = [
+        'cloture', 'envoi_watt', 'reponses', 'ar_qualite', 'transfert', 'envoye_validation', 'refus'
+    ];
+    var COURRIELS_CHART_LABELS = [
+        'Clôture', 'Envoi Watt', 'Réponses', 'AR Qualité', 'Transfert', 'Env. validation', 'Refus'
+    ];
+    var COURRIELS_CHART_COLORS = [
+        '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'
+    ];
+    function courrielsMetricValues(row) {
+        if (!row) return COURRIELS_METRIC_KEYS.map(function () { return 0; });
+        return COURRIELS_METRIC_KEYS.map(function (key) { return parseFloat(row[key]) || 0; });
+    }
+
     function isCourrielsEmpty(courRow) {
         if (!courRow) return true;
-        return sum([courRow.cloture, courRow.envoi_watt, courRow.reponse_directe]) <= 0;
+        return sum(courrielsMetricValues(courRow)) <= 0;
     }
 
     function isWattEmpty(wattRow) {
@@ -168,7 +210,7 @@
                             legend: { display: false },
                             datalabels: {
                                 color: '#fff',
-                                font: { weight: 'bold' },
+                                font: CHART_DATALABELS_FONT,
                                 formatter: function (value, context) {
                                     if (value == null || value === 0) return '';
                                     if (context.datasetIndex === 1) return Math.round(value) + '%';
@@ -177,9 +219,30 @@
                             }
                         },
                         scales: {
-                            x: { stacked: false, barPercentage: 1.0, categoryPercentage: 1.0 },
-                            y: { type: 'linear', display: true, position: 'left', beginAtZero: true, stacked: false },
-                            y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, stacked: false }
+                            x: {
+                                stacked: false,
+                                barPercentage: 1.0,
+                                categoryPercentage: 1.0,
+                                ticks: CHART_X_AXIS_TICKS
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                beginAtZero: true,
+                                stacked: false,
+                                ticks: yAxisTicks()
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                min: 0,
+                                max: 100,
+                                grid: { drawOnChartArea: false },
+                                stacked: false,
+                                ticks: yAxisTicks()
+                            }
                         }
                     }
                 });
@@ -222,7 +285,7 @@
                             },
                             datalabels: {
                                 color: '#fff',
-                                font: { weight: 'bold' },
+                                font: CHART_DATALABELS_FONT,
                                 formatter: function (value) {
                                     if (!value || value === 0) return '';
                                     return formatMmSs(value);
@@ -230,11 +293,10 @@
                             }
                         },
                         scales: {
+                            x: { ticks: CHART_X_AXIS_TICKS },
                             y: {
                                 beginAtZero: true,
-                                ticks: {
-                                    callback: function (value) { return formatMmSs(value); }
-                                }
+                                ticks: yAxisTicks(function (value) { return formatMmSs(value); })
                             }
                         }
                     }
@@ -253,12 +315,12 @@
                 createChart(canvasCour, {
                     type: 'bar',
                     data: {
-                        labels: ['Clôture', 'Envoi Watt', 'Rép. directe'],
+                        labels: COURRIELS_CHART_LABELS,
                         datasets: [
                             {
                                 label: 'Équipe',
-                                data: [parseFloat(courRow.cloture) || 0, parseFloat(courRow.envoi_watt) || 0, parseFloat(courRow.reponse_directe) || 0],
-                                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
+                                data: courrielsMetricValues(courRow),
+                                backgroundColor: COURRIELS_CHART_COLORS,
                                 borderRadius: 4
                             }
                         ]
@@ -270,11 +332,14 @@
                             legend: { display: false },
                             datalabels: {
                                 color: '#fff',
-                                font: { weight: 'bold' },
+                                font: CHART_DATALABELS_FONT,
                                 formatter: function (value) { return (!value || value === 0) ? '' : Math.round(value); }
                             }
                         },
-                        scales: { y: { beginAtZero: true } }
+                        scales: {
+                            x: { ticks: CHART_X_AXIS_TICKS },
+                            y: { beginAtZero: true, ticks: yAxisTicks() }
+                        }
                     }
                 });
             }
@@ -308,11 +373,14 @@
                             legend: { display: false },
                             datalabels: {
                                 color: '#fff',
-                                font: { weight: 'bold' },
+                                font: CHART_DATALABELS_FONT,
                                 formatter: function (value) { return (!value || value === 0) ? '' : (Math.round(value * 10) / 10); }
                             }
                         },
-                        scales: { y: { beginAtZero: true } }
+                        scales: {
+                            x: { ticks: CHART_X_AXIS_TICKS },
+                            y: { beginAtZero: true, ticks: yAxisTicks() }
+                        }
                     }
                 });
             }
@@ -385,13 +453,11 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: {
-                            ticks: { color: '#64748b', font: { size: 11, weight: '600' } }
-                        },
+                        x: { ticks: CHART_X_AXIS_TICKS },
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: 'Heures', color: '#94a3b8', font: { size: 11, weight: '600' } },
-                            ticks: { color: '#64748b' }
+                            ticks: yAxisTicks()
                         }
                     },
                     plugins: {
@@ -409,7 +475,7 @@
                             anchor: 'end',
                             align: 'end',
                             color: '#0f172a',
-                            font: { weight: 'bold', size: 10 },
+                            font: CHART_DATALABELS_FONT,
                             formatter: function (v) {
                                 if (!v || v === 0) return '';
                                 var pct = totalPlanningHours > 0 ? Math.round((v / totalPlanningHours) * 100) : 0;

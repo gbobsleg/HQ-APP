@@ -100,12 +100,40 @@
         { production: 'Matricule',       internal: 'matricule' },
         { production: 'Agent',           internal: 'agentName' },
         { production: 'Date',            internal: 'date' },
-        { production: 'Cl\u00f4ture',         internal: 'cloture' },
+        { production: 'Cl\u00f4ture',    internal: 'cloture' },
         { production: 'Cloture',         internal: 'cloture' },
         { production: 'Envoi en Watt',   internal: 'envoi_watt' },
-        { production: 'R\u00e9ponse directe', internal: 'reponse_directe' },
-        { production: 'Reponse directe', internal: 'reponse_directe' }
+        { production: 'R\u00e9ponses', internal: 'reponses' },
+        { production: 'Reponses',        internal: 'reponses' },
+        { production: 'AR Qualit\u00e9', internal: 'ar_qualite' },
+        { production: 'AR Qualite',     internal: 'ar_qualite' },
+        { production: 'Transfert (autre corbeille, autre Urssaf et hors validation)', internal: 'transfert' },
+        { production: 'Envoy\u00e9 en validation', internal: 'envoye_validation' },
+        { production: 'Envoye en validation', internal: 'envoye_validation' },
+        { production: 'Refus',           internal: 'refus' }
     ];
+
+    function emptyCourrielsSums() {
+        return {
+            cloture: 0,
+            envoi_watt: 0,
+            reponses: 0,
+            ar_qualite: 0,
+            transfert: 0,
+            envoye_validation: 0,
+            refus: 0
+        };
+    }
+
+    function addCourrielsSums(target, row) {
+        target.cloture += safeParseNumber(row.cloture);
+        target.envoi_watt += safeParseNumber(row.envoi_watt);
+        target.reponses += safeParseNumber(row.reponses);
+        target.ar_qualite += safeParseNumber(row.ar_qualite);
+        target.transfert += safeParseNumber(row.transfert);
+        target.envoye_validation += safeParseNumber(row.envoye_validation);
+        target.refus += safeParseNumber(row.refus);
+    }
 
     // Nouveau format watt_YYYY-MM.csv (pré-calculé et journalier).
     var COLUMN_MAPPING_WATT = [
@@ -357,18 +385,10 @@
                 dateStr = (rows[r].date || '').trim() || 'unknown';
                 key = agentId + '|' + dateStr;
                 if (!groupsByAgentDate[key]) {
-                    groupsByAgentDate[key] = {
-                        agentId: agentId,
-                        date: dateStr,
-                        cloture: 0,
-                        envoi_watt: 0,
-                        reponse_directe: 0
-                    };
+                    groupsByAgentDate[key] = Object.assign({ agentId: agentId, date: dateStr }, emptyCourrielsSums());
                 }
                 g = groupsByAgentDate[key];
-                g.cloture         += safeParseNumber(rows[r].cloture);
-                g.envoi_watt      += safeParseNumber(rows[r].envoi_watt);
-                g.reponse_directe += safeParseNumber(rows[r].reponse_directe);
+                addCourrielsSums(g, rows[r]);
             }
         } else if (sourceKey === 'watt') {
             for (r = 0; r < rows.length; r++) {
@@ -404,7 +424,7 @@
                 if (sourceKey === 'telephone') {
                     byAgent[aid] = { agentId: aid, offres: {}, appels_traites: 0, dmtSumSeconds: 0, dmtWeight: 0, dmcSumSeconds: 0, dmmgSumSeconds: 0, dmpaSumSeconds: 0, identsSum: 0, repImmSum: 0, transferts: 0, consultations: 0, rona: 0 };
                 } else if (sourceKey === 'courriels') {
-                    byAgent[aid] = { agentId: aid, cloture: 0, envoi_watt: 0, reponse_directe: 0 };
+                    byAgent[aid] = Object.assign({ agentId: aid }, emptyCourrielsSums());
                 } else {
                     byAgent[aid] = { agentId: aid, cloture_manuelle: 0, reroutage_individuel: 0, transfert_prod: 0 };
                 }
@@ -423,9 +443,7 @@
                 agg.consultations += grp.consultations;
                 agg.rona += grp.rona;
             } else if (sourceKey === 'courriels') {
-                agg.cloture         += grp.cloture;
-                agg.envoi_watt      += grp.envoi_watt;
-                agg.reponse_directe += grp.reponse_directe;
+                addCourrielsSums(agg, grp);
             } else {
                 agg.cloture_manuelle += grp.cloture_manuelle;
                 agg.reroutage_individuel += grp.reroutage_individuel;
@@ -504,12 +522,15 @@
                 out.push(globalData);
                 
             } else if (sourceKey === 'courriels') {
-                out.push({
-                    agentId:          aggItem.agentId,
-                    cloture:          aggItem.cloture,
-                    envoi_watt:       aggItem.envoi_watt,
-                    reponse_directe:  aggItem.reponse_directe
-                });
+                out.push(Object.assign({ agentId: aggItem.agentId }, emptyCourrielsSums(), {
+                    cloture: aggItem.cloture,
+                    envoi_watt: aggItem.envoi_watt,
+                    reponses: aggItem.reponses,
+                    ar_qualite: aggItem.ar_qualite,
+                    transfert: aggItem.transfert,
+                    envoye_validation: aggItem.envoye_validation,
+                    refus: aggItem.refus
+                }));
             } else {
                 out.push({
                     agentId: aggItem.agentId,
@@ -704,6 +725,19 @@
                             cloture_manuelle: safeParseNumber(r.cloture_manuelle),
                             reroutage_individuel: safeParseNumber(r.reroutage_individuel),
                             transfert_prod: safeParseNumber(r.transfert_prod)
+                        };
+                    });
+                    out.courrielsDetail = rawDtos.courriels.map(function (r) {
+                        return {
+                            agentId: r.agentId,
+                            date: r.date || '',
+                            cloture: safeParseNumber(r.cloture),
+                            envoi_watt: safeParseNumber(r.envoi_watt),
+                            reponses: safeParseNumber(r.reponses),
+                            ar_qualite: safeParseNumber(r.ar_qualite),
+                            transfert: safeParseNumber(r.transfert),
+                            envoye_validation: safeParseNumber(r.envoye_validation),
+                            refus: safeParseNumber(r.refus)
                         };
                     });
                     return out;
@@ -924,16 +958,14 @@
         }
 
         // --- Courriels : sommes ---
-        var cour = { agentId: 0, cloture: 0, envoi_watt: 0, reponse_directe: 0 };
+        var cour = Object.assign({ agentId: 0 }, emptyCourrielsSums());
         var hasCour = false;
         for (var ci = 0; ci < courriels.length; ci++) {
             var crow = courriels[ci];
             if (!crow || typeof crow !== 'object') continue;
             if (!inScope(crow.agentId)) continue;
             hasCour = true;
-            cour.cloture += safeParseNumber(crow.cloture);
-            cour.envoi_watt += safeParseNumber(crow.envoi_watt);
-            cour.reponse_directe += safeParseNumber(crow.reponse_directe);
+            addCourrielsSums(cour, crow);
         }
         var courOut = hasCour ? [cour] : [];
 

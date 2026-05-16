@@ -737,10 +737,10 @@
                     </div>
                     <div id="prod-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                         <div class="flex-1 relative min-h-0">
-                            <canvas id="prod-courriels-volumes"></canvas>
+                            <canvas id="prod-courriels-volumes" class="min-h-[240px]"></canvas>
                         </div>
                     </div>
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
@@ -796,12 +796,14 @@
                     <!-- Tableau détail par offre : col-span-2 -->
                     <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                         <div class="flex-1 relative min-h-0">
-                            <canvas id="agent360-courriels-volumes"></canvas>
+                            <canvas id="agent360-courriels-volumes" class="min-h-[240px]"></canvas>
                         </div>
                     </div>
+                    <!-- Tableau détail Courriels par jour : col-span-2 -->
+                    <div id="agent360-courriels-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
                         <div class="flex-1 relative min-h-0">
@@ -811,16 +813,16 @@
                     <!-- Tableau détail Watt par circuit : col-span-2 -->
                     <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
-                    <!-- Planning – Répartition des états -->
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
-                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Répartition des états</h3>
-                        <div class="flex-1 relative min-h-0">
-                            <canvas id="planning360Chart"></canvas>
+                    <!-- Planning : graphique + tableau détail côte à côte -->
+                    <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 min-h-0">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Répartition des états</h3>
+                            <div class="flex-1 relative min-h-0">
+                                <canvas id="planning360Chart"></canvas>
+                            </div>
                         </div>
+                        <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 min-h-0 hidden"></div>
                     </div>
-
-                    <!-- Planning - Tableau détail -->
-                    <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 hidden"></div>
 
                     <!-- Évolution Qualité : dernière position, pleine largeur -->
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
