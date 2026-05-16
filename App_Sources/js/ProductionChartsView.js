@@ -411,6 +411,26 @@
             }
         }
 
+        // --- Tableau Courriels – détail par jour ---
+        var courTableContainer = containerEl ? containerEl.querySelector('#prod-courriels-table-container') : null;
+        if (courTableContainer) {
+            var courTableHtml = UI && typeof UI.buildCourrielsDetailTableHtml === 'function'
+                ? UI.buildCourrielsDetailTableHtml(production.courrielsDetail || [])
+                : '';
+            if (courTableHtml) {
+                courTableContainer.innerHTML = courTableHtml;
+                courTableContainer.classList.remove('hidden');
+                courTableContainer.classList.add('block');
+            } else {
+                courTableContainer.classList.add('hidden');
+                courTableContainer.classList.remove('block');
+            }
+        }
+
+        if (UI && typeof UI.initCollapsibleTableToggles === 'function') {
+            UI.initCollapsibleTableToggles(containerEl, false, ['prod-courriels-table-container']);
+        }
+
         // --- Graphique WATT ---
         var canvasWatt = getCanvas('prod-watt', containerEl);
         if (canvasWatt) {

@@ -1005,12 +1005,30 @@
             wattDetailOut.push(detailByCircuit[circuits[cx]]);
         }
 
+        // --- Courriels Detail : groupement par date (somme des agents du périmètre) ---
+        var courrielsDetailRaw = Array.isArray(rawProduction.courrielsDetail) ? rawProduction.courrielsDetail : [];
+        var COUR_KEYS = ['cloture', 'envoi_watt', 'reponses', 'ar_qualite', 'transfert', 'envoye_validation', 'refus'];
+        var detailByDate = {};
+        for (var cdi = 0; cdi < courrielsDetailRaw.length; cdi++) {
+            var cdr = courrielsDetailRaw[cdi];
+            if (!cdr || !inScope(cdr.agentId)) continue;
+            var cdate = cdr.date || '';
+            if (!detailByDate[cdate]) {
+                var init = { date: cdate };
+                COUR_KEYS.forEach(function (k) { init[k] = 0; });
+                detailByDate[cdate] = init;
+            }
+            COUR_KEYS.forEach(function (k) { detailByDate[cdate][k] += safeParseNumber(cdr[k]); });
+        }
+        var courrielsDetailOut = Object.keys(detailByDate).map(function (d) { return detailByDate[d]; });
+
         return {
             production: {
                 telephone: telOut,
                 courriels: courOut,
                 watt: wattOut,
-                wattDetail: wattDetailOut
+                wattDetail: wattDetailOut,
+                courrielsDetail: courrielsDetailOut
             }
         };
     }
