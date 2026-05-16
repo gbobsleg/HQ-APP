@@ -23,6 +23,21 @@
     }
 
     /**
+     * Formate des heures décimales en sexagésimal (ex. 14.5 → 14h30, 14.08 → 14h05).
+     * @param {number} decimalHours
+     * @returns {string}
+     */
+    function formatDecimalHours(decimalHours) {
+        if (decimalHours == null || isNaN(decimalHours)) return '0h00';
+        var sign = decimalHours < 0 ? '-' : '';
+        var totalMinutes = Math.round(Math.abs(decimalHours) * 60);
+        var hPart = Math.floor(totalMinutes / 60);
+        var mPart = totalMinutes % 60;
+        var mStr = ('0' + mPart).slice(-2);
+        return sign + hPart + 'h' + mStr;
+    }
+
+    /**
      * delta% coloré : lowerIsBetter=true → négatif=vert, positif=rouge.
      * @param {number} agentVal
      * @param {number} avgVal
@@ -225,6 +240,7 @@
 
     global.HQApp.UIComponents = {
         formatMmSs: formatMmSs,
+        formatDecimalHours: formatDecimalHours,
         deltaHtml: deltaHtml,
         buildTelephoneTableHtml: buildTelephoneTableHtml,
         buildWattTableHtml: buildWattTableHtml,

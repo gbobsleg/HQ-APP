@@ -25,6 +25,9 @@
 
     var UI = global.HQApp && global.HQApp.UIComponents ? global.HQApp.UIComponents : null;
     var formatMmSs = UI && typeof UI.formatMmSs === 'function' ? UI.formatMmSs : function () { return '00:00'; };
+    var formatDecimalHours = UI && typeof UI.formatDecimalHours === 'function'
+        ? UI.formatDecimalHours
+        : function (h) { return String(h); };
 
     /**
      * Récupère un canvas par id. Ciblage relatif au conteneur pour éviter de résoudre un élément
@@ -280,7 +283,7 @@
                                 label: function (context) {
                                     var v = context.parsed || 0;
                                     var pct = totalPlanningHours > 0 ? ((v / totalPlanningHours) * 100).toFixed(1) : 0;
-                                    return context.label + ' : ' + v.toFixed(2) + ' h (' + pct + '%)';
+                                    return context.label + ' : ' + formatDecimalHours(v) + ' (' + pct + '%)';
                                 }
                             }
                         },
@@ -291,7 +294,7 @@
                             formatter: function (v) {
                                 if (!v || v === 0) return '';
                                 var pct = totalPlanningHours > 0 ? Math.round((v / totalPlanningHours) * 100) : 0;
-                                return v.toFixed(1) + ' h\n(' + pct + '%)';
+                                return formatDecimalHours(v) + '\n(' + pct + '%)';
                             }
                         }
                     }
@@ -330,7 +333,7 @@
                     var pct = totalPlanningHours > 0 ? ((item.value / totalPlanningHours) * 100).toFixed(1) : 0;
                     tableHtml += '<tr class="hover:bg-slate-50 transition-colors">';
                     tableHtml += '<td class="py-2 font-medium text-slate-700">' + item.label + '</td>';
-                    tableHtml += '<td class="py-2 text-right font-bold text-indigo-600">' + item.value.toFixed(2) + ' h</td>';
+                    tableHtml += '<td class="py-2 text-right font-bold text-indigo-600">' + formatDecimalHours(item.value) + '</td>';
                     tableHtml += '<td class="py-2 text-right text-slate-500">' + pct + '%</td>';
                     tableHtml += '</tr>';
                 });
@@ -339,7 +342,7 @@
                 tableHtml += '<tfoot class="sticky bottom-0 bg-white z-10">';
                 tableHtml += '<tr>';
                 tableHtml += '<td class="pt-2 font-black text-slate-800 border-t border-slate-100">Total</td>';
-                tableHtml += '<td class="pt-2 text-right font-black text-indigo-600 border-t border-slate-100">' + totalPlanningHours.toFixed(2) + ' h</td>';
+                tableHtml += '<td class="pt-2 text-right font-black text-indigo-600 border-t border-slate-100">' + formatDecimalHours(totalPlanningHours) + '</td>';
                 tableHtml += '<td class="pt-2 text-right font-black text-slate-800 border-t border-slate-100">100%</td>';
                 tableHtml += '</tr>';
                 tableHtml += '</tfoot>';
