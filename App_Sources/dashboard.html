@@ -704,25 +704,27 @@
             <!-- Onglet Production & Équipes -->
             <div x-show="$store.dashboard.activeTab === 'production'" class="max-w-7xl mx-auto space-y-6">
                 <div id="production-charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                    <!-- Barre de filtres par offre : cohérente avec Agent 360° -->
-                    <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
-                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
-                        <div class="flex flex-wrap gap-1.5">
+                    <!-- Séparateur de section Téléphone + filtre par offre -->
+                    <div class="lg:col-span-2 flex items-center gap-x-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Téléphone</h2>
+                        <div class="flex gap-1.5 shrink-0">
                             <button type="button"
                                 @click="$store.dashboard.prodSelectedOffer = ''; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                                 :class="$store.dashboard.prodSelectedOffer === '' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
-                                class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors">
+                                class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap">
                                 Global
                             </button>
                             <template x-for="offer in ($store.dashboard.prodAvailableOffers || [])" :key="offer">
                                 <button type="button"
                                     @click="$store.dashboard.prodSelectedOffer = offer; refreshProdFromStore(rootHandle, allAgents); updateDashboardUrl()"
                                     :class="$store.dashboard.prodSelectedOffer === offer ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
-                                    class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors"
+                                    class="px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap"
                                     x-text="offer"></button>
                             </template>
                         </div>
+                        <div class="flex-1 h-px bg-slate-200 min-w-[20px]"></div>
                     </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Téléphone - Temps (s)</h3>
                         <div class="flex-1 relative min-h-0">
@@ -737,12 +739,25 @@
                     </div>
                     <div id="prod-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
+                    <!-- Séparateur de section Courriels -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Courriels</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                         <div class="flex-1 relative min-h-0">
                             <canvas id="prod-courriels-volumes" class="min-h-[240px]"></canvas>
                         </div>
                     </div>
+
+                    <!-- Séparateur de section WATT -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">WATT</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
                         <div class="flex-1 relative min-h-0">
@@ -751,7 +766,12 @@
                     </div>
                     <div id="prod-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
-                    <!-- Planning – Heures planifiées par état (agrégé) -->
+                    <!-- Séparateur de section Planning -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Planning</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-80 lg:col-span-2">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Planning – Heures planifiées par état</h3>
                         <div class="flex-1 relative min-h-0">
@@ -765,10 +785,11 @@
             <div x-show="$store.dashboard.activeTab === 'agent360'" class="max-w-7xl mx-auto space-y-6">
                 <div id="agent360-charts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6" data-agent360-tables-default="collapsed">
 
-                    <!-- Barre de filtres par offre : col-span-2 pour couvrir les 2 charts téléphone -->
-                    <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
-                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
-                        <div id="agent360-tel-filters" class="flex flex-wrap gap-1.5"></div>
+                    <!-- Séparateur de section Téléphone + filtre par offre -->
+                    <div class="lg:col-span-2 flex flex-wrap items-center gap-x-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Téléphone</h2>
+                        <div id="agent360-tel-filters" class="flex gap-1.5 shrink-0"></div>
+                        <div class="flex-1 h-px bg-slate-200 min-w-[20px]"></div>
                     </div>
 
                     <!-- Téléphone - Temps (s) : ancienne position de Qualité -->
@@ -796,6 +817,12 @@
                     <!-- Tableau détail par offre : col-span-2 -->
                     <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
+                    <!-- Séparateur de section Courriels -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Courriels</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                         <div class="flex-1 relative min-h-0">
@@ -804,6 +831,13 @@
                     </div>
                     <!-- Tableau détail Courriels par jour : col-span-2 -->
                     <div id="agent360-courriels-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Séparateur de section WATT -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">WATT</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                         <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
                         <div class="flex-1 relative min-h-0">
@@ -812,6 +846,12 @@
                     </div>
                     <!-- Tableau détail Watt par circuit : col-span-2 -->
                     <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Séparateur de section Planning -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Planning</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
 
                     <!-- Planning : graphique + tableau détail côte à côte -->
                     <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">

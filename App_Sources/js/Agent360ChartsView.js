@@ -442,15 +442,15 @@
                 var btn = document.createElement('button');
                 var isSelected = String(offre) === String(currentSelectedOffre);
                 var isGlobal = offre === 'GLOBAL';
-                btn.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors ' +
+                btn.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ' +
                     (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50');
                 btn.textContent = isGlobal ? 'Global' : offre;
                 btn.setAttribute('data-offre', offre);
                 btn.onclick = function() {
                     Array.from(filtersContainer.children).forEach(function(c) {
-                        c.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
+                        c.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
                     });
-                    this.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600';
+                    this.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-blue-600 text-white border-blue-600';
                     currentSelectedOffre = offre;
                     if (containerEl && typeof containerEl.setAttribute === 'function') {
                         containerEl.setAttribute('data-agent360-selected-offre', currentSelectedOffre);

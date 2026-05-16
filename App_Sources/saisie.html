@@ -878,9 +878,11 @@
             </div>
             <div id="saisie-agent360-container" class="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4" x-show="rootHandle && campagnesHandle" data-agent360-tables-default="collapsed">
                 <!-- Structure calquée sur la vue 360 du dashboard pour réutiliser Agent360ChartsView -->
-                <div class="lg:col-span-2 bg-white px-5 py-3 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-3 flex-wrap">
-                    <span class="text-xs font-black text-slate-400 uppercase tracking-widest shrink-0">Offre</span>
-                    <div id="agent360-tel-filters" class="flex flex-wrap gap-1.5"></div>
+                <!-- Séparateur de section Téléphone + filtre par offre -->
+                <div class="lg:col-span-2 flex flex-wrap items-center gap-x-4 px-1 pt-2">
+                    <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Téléphone</h2>
+                    <div id="agent360-tel-filters" class="flex gap-1.5 shrink-0"></div>
+                    <div class="flex-1 h-px bg-slate-200 min-w-[20px]"></div>
                 </div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                     <div class="flex justify-between items-start mb-4">
@@ -901,6 +903,11 @@
                     </div>
                 </div>
                 <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                <!-- Séparateur de section Courriels -->
+                <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                    <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Courriels</h2>
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                </div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-96 lg:col-span-2">
                     <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Courriels</h3>
                     <div class="flex-1 relative min-h-0">
@@ -909,6 +916,11 @@
                 </div>
                 <!-- Tableau détail Courriels par jour : col-span-2 -->
                 <div id="agent360-courriels-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                <!-- Séparateur de section WATT -->
+                <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                    <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">WATT</h2>
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                </div>
                 <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
                     <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">WATT</h3>
                     <div class="flex-1 relative min-h-0">
@@ -916,6 +928,11 @@
                     </div>
                 </div>
                 <div id="agent360-watt-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+                <!-- Séparateur de section Planning -->
+                <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                    <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Planning</h2>
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                </div>
                 <!-- Planning : graphique + tableau détail côte à côte -->
                 <div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 min-h-0">
