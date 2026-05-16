@@ -410,13 +410,16 @@
 
         // ---- Filtres par offre (section statique dans le DOM) ----
         var filtersContainer = containerEl.querySelector('#agent360-tel-filters');
-        // Conserve la dernière offre sélectionnée entre les refresh (changement de période).
+        // Conserve les offres sélectionnées entre les refresh (changement de période).
         // Le conteneur DOM persiste pendant `view.destroy(container)` donc on peut stocker un attribut.
-        var currentSelectedOffre = 'GLOBAL';
+        var currentSelectedOffres = ['GLOBAL'];
         try {
             if (containerEl && typeof containerEl.getAttribute === 'function') {
-                var savedOffre = containerEl.getAttribute('data-agent360-selected-offre');
-                if (savedOffre) currentSelectedOffre = String(savedOffre);
+                var savedOffres = containerEl.getAttribute('data-agent360-selected-offres');
+                if (savedOffres) {
+                    var parsed = JSON.parse(savedOffres);
+                    if (Array.isArray(parsed) && parsed.length > 0) currentSelectedOffres = parsed;
+                }
             }
         } catch (e) {}
 
@@ -430,32 +433,53 @@
                     if (o.offre && offresUniques.indexOf(o.offre) === -1) offresUniques.push(o.offre);
                 });
             }
-            // Si l'offre sauvegardée n'est pas disponible dans le nouveau périmètre, retomber sur GLOBAL.
-            if (offresUniques.indexOf(currentSelectedOffre) === -1) {
-                currentSelectedOffre = 'GLOBAL';
-                if (containerEl && typeof containerEl.setAttribute === 'function') {
-                    containerEl.setAttribute('data-agent360-selected-offre', currentSelectedOffre);
-                }
+            // Épurer les offres sauvegardées qui n'existent plus dans le périmètre courant.
+            var stillValid = currentSelectedOffres.filter(function(o) { return offresUniques.indexOf(o) !== -1; });
+            if (stillValid.length === 0) stillValid = ['GLOBAL'];
+            currentSelectedOffres = stillValid;
+            if (containerEl && typeof containerEl.setAttribute === 'function') {
+                containerEl.setAttribute('data-agent360-selected-offres', JSON.stringify(currentSelectedOffres));
             }
+
+            var CSS_ACTIVE   = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-blue-600 text-white border-blue-600';
+            var CSS_INACTIVE = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
+
+            // Met à jour le style de tous les boutons selon la sélection courante.
+            var syncButtonStyles = function() {
+                Array.from(filtersContainer.children).forEach(function(btn) {
+                    var o = btn.getAttribute('data-offre');
+                    btn.className = currentSelectedOffres.indexOf(o) !== -1 ? CSS_ACTIVE : CSS_INACTIVE;
+                });
+            };
 
             offresUniques.forEach(function(offre) {
                 var btn = document.createElement('button');
-                var isSelected = String(offre) === String(currentSelectedOffre);
                 var isGlobal = offre === 'GLOBAL';
-                btn.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap ' +
-                    (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50');
+                btn.className = currentSelectedOffres.indexOf(offre) !== -1 ? CSS_ACTIVE : CSS_INACTIVE;
                 btn.textContent = isGlobal ? 'Global' : offre;
                 btn.setAttribute('data-offre', offre);
+                // Les boutons sont recréés à chaque render (filtersContainer.innerHTML = ''), donc
+                // chaque bouton n'a qu'un seul listener — pas de risque d'accumulation.
                 btn.onclick = function() {
-                    Array.from(filtersContainer.children).forEach(function(c) {
-                        c.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-white text-gray-600 border-gray-300 hover:bg-gray-50';
-                    });
-                    this.className = 'px-2 py-0.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap bg-blue-600 text-white border-blue-600';
-                    currentSelectedOffre = offre;
-                    if (containerEl && typeof containerEl.setAttribute === 'function') {
-                        containerEl.setAttribute('data-agent360-selected-offre', currentSelectedOffre);
+                    if (isGlobal) {
+                        currentSelectedOffres = ['GLOBAL'];
+                    } else {
+                        var idx = currentSelectedOffres.indexOf(offre);
+                        // Retirer GLOBAL si une offre individuelle est sélectionnée.
+                        currentSelectedOffres = currentSelectedOffres.filter(function(o) { return o !== 'GLOBAL'; });
+                        if (idx === -1) {
+                            currentSelectedOffres.push(offre);
+                        } else {
+                            currentSelectedOffres.splice(idx, 1);
+                        }
+                        // Si tout est désélectionné, retomber sur GLOBAL.
+                        if (currentSelectedOffres.length === 0) currentSelectedOffres = ['GLOBAL'];
                     }
-                    renderTelephoneSection(currentSelectedOffre);
+                    if (containerEl && typeof containerEl.setAttribute === 'function') {
+                        containerEl.setAttribute('data-agent360-selected-offres', JSON.stringify(currentSelectedOffres));
+                    }
+                    syncButtonStyles();
+                    renderTelephoneSection(currentSelectedOffres);
                 };
                 filtersContainer.appendChild(btn);
             });
@@ -564,8 +588,42 @@
             }
         }
 
-        // Fonction pour filtrer et afficher les données selon l'offre
-        function renderTelephoneSection(selectedOffre) {
+        // Construit un telRow synthétique en agrégeant plusieurs sous-lignes offre.
+        // Les compteurs bruts (appels, transferts, consultations, rona) sont sommés.
+        // Les métriques de temps et taux (dmt, dmc, dmmg, dmpa, identifications, reponses_immediates)
+        // sont des moyennes pondérées par appels_traites, comme le fait StatsRepository.
+        function buildTelRowForOffres(telRowGlobal, offreNames) {
+            var isGlobal = !offreNames || offreNames.length === 0
+                || (offreNames.length === 1 && offreNames[0] === 'GLOBAL');
+            if (isGlobal) return telRowGlobal;
+
+            var selected = (telRowGlobal && Array.isArray(telRowGlobal.offres))
+                ? telRowGlobal.offres.filter(function(o) { return o && offreNames.indexOf(o.offre) !== -1; })
+                : [];
+            if (selected.length === 0) return null;
+            if (selected.length === 1) return selected[0];
+
+            var totalVol = 0;
+            var sums  = { appels_traites: 0, transferts: 0, consultations: 0, rona: 0 };
+            var wSums = { dmt: 0, dmc: 0, dmmg: 0, dmpa: 0, identifications: 0, reponses_immediates: 0 };
+
+            selected.forEach(function(o) {
+                var vol = parseFloat(o.appels_traites) || 0;
+                totalVol += vol;
+                Object.keys(sums).forEach(function(k) { sums[k] += parseFloat(o[k]) || 0; });
+                Object.keys(wSums).forEach(function(k) { wSums[k] += (parseFloat(o[k]) || 0) * vol; });
+            });
+
+            var out = Object.assign({}, telRowGlobal, sums);
+            Object.keys(wSums).forEach(function(k) {
+                out[k] = totalVol > 0 ? wSums[k] / totalVol : 0;
+            });
+            out.offres = selected;
+            return out;
+        }
+
+        // Fonction pour filtrer et afficher les données selon les offres sélectionnées
+        function renderTelephoneSection(selectedOffres) {
             var telAll = production.telephone || [];
 
             // Récupérer les données de l'agent en premier (nécessaire pour le calcul de la moyenne)
@@ -573,34 +631,35 @@
                 ? (telAll.find(function (r) { return Number(r.agentId) === Number(data.agentId); }) || null)
                 : (telAll[0] || null);
 
-            // Moyenne régionale : périmètre restreint aux offres de l'agent (même logique que la table)
+            var isGlobal = !selectedOffres || selectedOffres.length === 0
+                || (selectedOffres.length === 1 && selectedOffres[0] === 'GLOBAL');
+
+            // Moyenne régionale : périmètre restreint aux offres sélectionnées (ou offres de l'agent si GLOBAL)
             var avgTel;
-            if (selectedOffre === 'GLOBAL') {
+            if (isGlobal) {
                 var offresForAvg = (telRowGlobal && Array.isArray(telRowGlobal.offres)) ? telRowGlobal.offres : [];
                 var agentOffreNamesForAvg = offresForAvg.filter(function(o) { return o && typeof o.offre === 'string'; }).map(function(o) { return o.offre; });
                 avgTel = agentOffreNamesForAvg.length > 0
                     ? accToAvg(combineAccForOffres(agentOffreNamesForAvg))
                     : accToAvg(regionAcc.GLOBAL);
             } else {
-                avgTel = accToAvg(regionAcc[selectedOffre] || regionAcc.GLOBAL);
+                // combineAccForOffres accepte déjà un tableau de noms d'offres
+                avgTel = accToAvg(combineAccForOffres(selectedOffres));
             }
-            
-            var telRow = null;
-            if (telRowGlobal) {
-                if (selectedOffre === 'GLOBAL') {
-                    telRow = telRowGlobal;
-                } else if (Array.isArray(telRowGlobal.offres)) {
-                    var found = telRowGlobal.offres.filter(function(o) { return o && o.offre === selectedOffre; })[0];
-                    telRow = found || null;
-                }
-            }
-            
-            // Si pas de données pour cette offre pour cet agent, utiliser des valeurs par défaut 0
+
+            var telRow = telRowGlobal
+                ? buildTelRowForOffres(telRowGlobal, selectedOffres)
+                : null;
+
+            // Si pas de données pour cette sélection, utiliser des valeurs par défaut 0
             if (!telRow) {
                 telRow = { appels_traites: 0, identifications: 0, reponses_immediates: 0, dmt: 0, dmc: 0, dmmg: 0, dmpa: 0, transferts: 0, consultations: 0, rona: 0 };
             }
 
-            // Update title to show current filter
+            // Libellé de filtre pour les titres
+            var filterLabel = isGlobal ? '' : selectedOffres.join(', ');
+
+            // Mise à jour des titres des graphiques
             var telSection = containerEl ? containerEl.querySelector('#agent360-telephone') : null;
             if (telSection) {
                 var container = telSection.closest('.bg-white');
@@ -608,11 +667,7 @@
                     var titleEl = container.querySelector('h3');
                     if (titleEl) {
                         var baseTitle = 'Téléphone - Efficacité';
-                        if (selectedOffre !== 'GLOBAL') {
-                            titleEl.textContent = baseTitle + ' (' + selectedOffre + ')';
-                        } else {
-                            titleEl.textContent = baseTitle;
-                        }
+                        titleEl.textContent = filterLabel ? baseTitle + ' (' + filterLabel + ')' : baseTitle;
                     }
                 }
             }
@@ -624,11 +679,7 @@
                     var dmtTitleEl = dmtContainer.querySelector('h3');
                     if (dmtTitleEl) {
                         var baseDmtTitle = 'Téléphone - Temps (s)';
-                        if (selectedOffre !== 'GLOBAL') {
-                            dmtTitleEl.textContent = baseDmtTitle + ' (' + selectedOffre + ')';
-                        } else {
-                            dmtTitleEl.textContent = baseDmtTitle;
-                        }
+                        dmtTitleEl.textContent = filterLabel ? baseDmtTitle + ' (' + filterLabel + ')' : baseDmtTitle;
                     }
                 }
             }
@@ -917,7 +968,7 @@
             }
         } // Fin renderTelephoneSection
 
-        renderTelephoneSection(currentSelectedOffre);
+        renderTelephoneSection(currentSelectedOffres);
 
         // --- Courriels ---
         var courRow = data.agentId != null
