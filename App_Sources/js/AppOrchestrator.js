@@ -1964,10 +1964,11 @@ function app() {
                 .replace(/[^a-zA-Z0-9_-]/g, '_');
         },
 
-        resolveEvalFileName(agentId, campaignId) {
+        resolveEvalFileName(agentId, campaignId, timestamp) {
             const safeCampaignId = this.normalizeFileToken(campaignId);
             const safeAgentId = this.normalizeFileToken(agentId);
-            return `eval_${safeCampaignId}_${safeAgentId}.json`;
+            const ts = timestamp || Date.now();
+            return `eval_${safeCampaignId}_${safeAgentId}_${ts}.json`;
         },
 
         resolveBilanFileName(agentId, campaignId) {
@@ -2204,11 +2205,11 @@ function app() {
                 const sanitizedCampagne = repository.sanitizeDirectoryName(this.form.campagne);
                 const campaignHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedCampagne);
                 
+                const ts = Date.now();
                 let fileName = currentTab.data._fileName;
                 if (!fileName) {
-                    fileName = this.resolveEvalFileName(this.agentContext.agentId, sanitizedCampagne);
+                    fileName = this.resolveEvalFileName(this.agentContext.agentId, sanitizedCampagne, ts);
                 }
-                const ts = Date.now();
                 const dataToSave = this.evaluationEngine
                     ? this.evaluationEngine.buildEvalPayload(this.form, { agentId: this.agentContext.agentId, agent: this.agentContext.agentName, fileName, timestamp: ts })
                     : Object.assign({}, this.form, { agentId: this.agentContext.agentId, agent: this.agentContext.agentName, _fileName: fileName, _timestamp: ts });
