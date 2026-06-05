@@ -903,6 +903,30 @@
                     </div>
                 </div>
                 <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                <!-- Séparateur de section Productivité -->
+                <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                    <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Productivité</h2>
+                    <div class="flex-1 h-px bg-slate-200"></div>
+                </div>
+
+                <!-- Pauses – graphique -->
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Pauses</h3>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-pauses-chart"></canvas>
+                    </div>
+                </div>
+                <!-- Communication / Post-appel – graphique -->
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Communication &amp; Post-appel</h3>
+                    <div class="flex-1 relative min-h-0">
+                        <canvas id="agent360-pauses-durees-chart"></canvas>
+                    </div>
+                </div>
+                <!-- Tableau détail Pauses par jour : col-span-2 -->
+                <div id="agent360-pauses-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
                 <!-- Séparateur de section Courriels -->
                 <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
                     <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Courriels</h2>

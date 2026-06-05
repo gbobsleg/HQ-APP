@@ -391,8 +391,12 @@
                 : (typeof window.LISTE_AGENTS !== 'undefined' && Array.isArray(window.LISTE_AGENTS) ? window.LISTE_AGENTS : []);
             Promise.all([
                 repo.loadQualiteHistory(rootHandle, campagnesHandle, agentId, { agentDisplayName: agentDisplayName || '' }),
-                repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+                repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+                repo.loadPausesStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }).catch(function () { return { stats: [], detail: [] }; })
             ]).then(function (results) {
+                var qualiteHistory = results[0] || [];
+                var production     = results[1] || {};
+                var pausesResult   = results[2] || { stats: [], detail: [] };
                 var planningStats = { etats: {} };
                 try {
                     var appInstance = window.HQAppAppInstance;
@@ -402,7 +406,11 @@
                 } catch (e) {
                     console.error('[Planning] Crash intercepté dans dashboard (agent360) :', e);
                 }
-                view.renderAgent360(container, { qualiteHistory: results[0] || [], production: results[1] || {}, agentId: agentId, planning: planningStats });
+                production.pauses       = pausesResult.stats  || [];
+                production.pausesDetail = pausesResult.detail || [];
+                view.renderAgent360(container, { qualiteHistory: qualiteHistory, production: production, agentId: agentId, planning: planningStats });
+            }).catch(function (err) {
+                console.error('[Agent360] Erreur chargement données :', err);
             });
         }
         window.refreshProductionDashboard = refreshProductionDashboard;
@@ -847,6 +855,29 @@
 
                     <!-- Tableau détail par offre : col-span-2 -->
                     <div id="agent360-tel-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
+
+                    <!-- Séparateur de section Productivité -->
+                    <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">
+                        <h2 class="text-sm font-black text-slate-500 uppercase tracking-wider shrink-0">Productivité</h2>
+                        <div class="flex-1 h-px bg-slate-200"></div>
+                    </div>
+
+                    <!-- Pauses – graphique -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Pauses</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-pauses-chart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Communication / Post-appel – graphique -->
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72">
+                        <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Communication &amp; Post-appel</h3>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-pauses-durees-chart"></canvas>
+                        </div>
+                    </div>
+                    <!-- Tableau détail Pauses par jour : col-span-2 -->
+                    <div id="agent360-pauses-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
                     <!-- Séparateur de section Courriels -->
                     <div class="lg:col-span-2 flex items-center gap-4 px-1 pt-2">

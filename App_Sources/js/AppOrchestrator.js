@@ -1618,12 +1618,21 @@ function app() {
 
             Promise.all([
                 repo.loadQualiteHistory(this.rootHandle, this.campagnesHandle, agentId, { agentDisplayName: agentDisplayName }),
-                repo.loadProductionStats(this.rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+                repo.loadProductionStats(this.rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
+                (typeof repo.loadPausesStats === 'function'
+                    ? repo.loadPausesStats(this.rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+                    : Promise.resolve({ stats: [], detail: [] })
+                ).catch(function () { return { stats: [], detail: [] }; })
             ]).then(function (results) {
+                var qualiteHistory = results[0] || [];
+                var production     = results[1] || {};
+                var pausesResult   = results[2] || { stats: [], detail: [] };
+                production.pauses       = pausesResult.stats  || [];
+                production.pausesDetail = pausesResult.detail || [];
                 view.destroy(container);
                 view.renderAgent360(container, {
-                    qualiteHistory: results[0] || [],
-                    production: results[1] || {},
+                    qualiteHistory: qualiteHistory,
+                    production: production,
                     agentId: agentId,
                     planning: planningStats
                 });

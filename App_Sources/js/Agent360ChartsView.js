@@ -28,6 +28,16 @@
     var formatDecimalHours = UI && typeof UI.formatDecimalHours === 'function'
         ? UI.formatDecimalHours
         : function (h) { return String(h); };
+    var formatHhMmSs = UI && typeof UI.formatHhMmSs === 'function'
+        ? UI.formatHhMmSs
+        : function (v) {
+            var s = Number(v);
+            if (!Number.isFinite(s) || s < 0) return '00:00:00';
+            s = Math.round(s);
+            var h = Math.floor(s / 3600), mn = Math.floor((s % 3600) / 60), sc = s % 60;
+            var p = function (n) { return n < 10 ? '0' + n : String(n); };
+            return p(h) + ':' + p(mn) + ':' + p(sc);
+        };
 
     var CHART_X_AXIS_TICKS = {
         autoSkip: false,
@@ -89,6 +99,14 @@
         var existing = parent.querySelector('[data-empty-state-for="' + marker + '"]');
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
         canvas.classList.remove('hidden');
+        // Restaure la hauteur de la carte modifiée par showEmptyState
+        var card = parent.closest ? parent.closest('.bg-white') : null;
+        if (card && card.getAttribute('data-empty-collapsed') === 'true') {
+            card.style.height = '';
+            card.style.minHeight = '';
+            card.style.alignSelf = '';
+            card.removeAttribute('data-empty-collapsed');
+        }
     }
 
     function showEmptyState(canvas, title, subtitle) {
@@ -101,18 +119,30 @@
         var marker = canvas.id || '';
         var stateEl = document.createElement('div');
         stateEl.setAttribute('data-empty-state-for', marker);
-        stateEl.className = 'h-full min-h-[220px] w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 flex items-center justify-center';
+        stateEl.className = 'w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 flex items-center justify-center';
         stateEl.innerHTML =
-            '<div class="text-center px-6 py-4">' +
-                '<div class="mx-auto mb-3 w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400">' +
-                    '<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
+            '<div class="text-center px-4 py-3 flex items-center gap-3">' +
+                '<div class="w-8 h-8 shrink-0 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400">' +
+                    '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">' +
                         '<path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"></path>' +
                     '</svg>' +
                 '</div>' +
-                '<p class="text-sm font-bold text-slate-600">' + (title || 'Aucune donnée') + '</p>' +
-                '<p class="mt-1 text-xs text-slate-400">' + (subtitle || 'Aucune activité sur la période sélectionnée.') + '</p>' +
+                '<div class="text-left">' +
+                    '<p class="text-sm font-bold text-slate-600">' + (title || 'Aucune donnée') + '</p>' +
+                    '<p class="text-xs text-slate-400">' + (subtitle || 'Aucune activité sur la période sélectionnée.') + '</p>' +
+                '</div>' +
             '</div>';
         parent.appendChild(stateEl);
+
+        // Réduit la hauteur de la carte pour ne pas occuper l'espace d'un graphique plein.
+        // align-self:start empêche l'étirement en grille (sinon une carte voisine avec données rétablit la hauteur).
+        var card = parent.closest ? parent.closest('.bg-white') : null;
+        if (card) {
+            card.style.height = 'auto';
+            card.style.minHeight = '0';
+            card.style.alignSelf = 'start';
+            card.setAttribute('data-empty-collapsed', 'true');
+        }
     }
 
     function isPlanningEmpty(planningValues) {
@@ -179,10 +209,133 @@
         return ch;
     }
 
+    // ── Pauses ────────────────────────────────────────────────────────────────
+
+    function computePausesRatios(pauseRow) {
+        var vol     = Number(pauseRow && pauseRow.duree_pauses_vol   != null ? pauseRow.duree_pauses_vol   : 0);
+        var rona    = Number(pauseRow && pauseRow.duree_pauses_rona  != null ? pauseRow.duree_pauses_rona  : 0);
+        var nbVol   = Number(pauseRow && pauseRow.nb_pauses_vol      != null ? pauseRow.nb_pauses_vol      : 0);
+        var nbRona  = Number(pauseRow && pauseRow.nb_pauses_rona     != null ? pauseRow.nb_pauses_rona     : 0);
+        var comm    = Number(pauseRow && pauseRow.duree_communication != null ? pauseRow.duree_communication : 0);
+        var post    = Number(pauseRow && pauseRow.duree_post_appel    != null ? pauseRow.duree_post_appel    : 0);
+        if (!Number.isFinite(vol)    || vol    < 0) vol    = 0;
+        if (!Number.isFinite(rona)   || rona   < 0) rona   = 0;
+        if (!Number.isFinite(nbVol)  || nbVol  < 0) nbVol  = 0;
+        if (!Number.isFinite(nbRona) || nbRona < 0) nbRona = 0;
+        if (!Number.isFinite(comm)   || comm   < 0) comm   = 0;
+        if (!Number.isFinite(post)   || post   < 0) post   = 0;
+        return { dureeVol: vol, dureeRona: rona, nbVol: nbVol, nbRona: nbRona, dureeComm: comm, dureePostAppel: post };
+    }
+
+    function renderPausesChart(canvas, pauseRow) {
+        clearEmptyState(canvas);
+        var r = computePausesRatios(pauseRow);
+        if (r.dureeVol <= 0 && r.dureeRona <= 0 && r.nbVol <= 0 && r.nbRona <= 0) {
+            showEmptyState(canvas, 'Aucune donn\u00e9e', 'Aucune pause enregistr\u00e9e sur la p\u00e9riode s\u00e9lectionn\u00e9e.');
+            return;
+        }
+        // Seuil relatif : une barre dont la hauteur fait moins de 18% de la plus grande
+        // est jugée trop petite pour contenir le label, qui passe alors au-dessus.
+        var maxPause = Math.max(r.nbVol, r.nbRona, 1);
+        var isSmallPauseBar = function (ctx) {
+            var v = Number(ctx.dataset.data[ctx.dataIndex]) || 0;
+            return v > 0 && (v / maxPause) < 0.18;
+        };
+        createChart(canvas, {
+            type: 'bar',
+            data: {
+                labels: ['Volontaires', 'Suite à RONA'],
+                datasets: [{
+                    label: 'Nb de pauses',
+                    data: [r.nbVol, r.nbRona],
+                    backgroundColor: ['rgba(16,185,129,0.75)', 'rgba(239,68,68,0.75)'],
+                    borderColor:      ['#10b981', '#ef4444'],
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: function (ctx) { return isSmallPauseBar(ctx) ? 'end' : 'center'; },
+                        align: function (ctx) { return isSmallPauseBar(ctx) ? 'top' : 'center'; },
+                        color: function (ctx) { return isSmallPauseBar(ctx) ? '#374151' : '#fff'; },
+                        font: { size: 11, weight: 'bold' },
+                        formatter: function (value, ctx) {
+                            var dur = ctx.dataIndex === 0 ? r.dureeVol : r.dureeRona;
+                            return value > 0 ? value + ' pause' + (value > 1 ? 's' : '') + '\n' + formatHhMmSs(dur) : '';
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                var dur = ctx.dataIndex === 0 ? r.dureeVol : r.dureeRona;
+                                return ctx.label + '\u00a0: ' + ctx.parsed.y + ' pause(s), ' + formatHhMmSs(dur);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' } } },
+                    y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } }, title: { display: true, text: 'Nb de pauses', font: { size: 9 } } }
+                }
+            }
+        });
+    }
+
+    function renderPausesDureesChart(canvas, pauseRow) {
+        clearEmptyState(canvas);
+        var r = computePausesRatios(pauseRow);
+        if (r.dureeComm <= 0 && r.dureePostAppel <= 0) {
+            showEmptyState(canvas, 'Aucune donn\u00e9e', 'Aucune dur\u00e9e de communication ou post-appel sur la p\u00e9riode s\u00e9lectionn\u00e9e.');
+            return;
+        }
+        var totalDuree = r.dureeComm + r.dureePostAppel;
+        createChart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: ['Communication', 'Post-appel'],
+                datasets: [{
+                    data: [r.dureeComm, r.dureePostAppel],
+                    backgroundColor: ['rgba(59,130,246,0.85)', 'rgba(168,85,247,0.85)'],
+                    borderColor:      ['#fff', '#fff'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                    datalabels: {
+                        color: '#fff',
+                        font: { size: 11, weight: 'bold' },
+                        formatter: function (value) {
+                            if (value <= 0 || totalDuree <= 0) return '';
+                            return (value / totalDuree * 100).toFixed(1) + '\u00a0%';
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                var pct = totalDuree > 0 ? (ctx.parsed / totalDuree * 100).toFixed(1) + '\u00a0%' : '0\u00a0%';
+                                return ctx.label + '\u00a0: ' + formatHhMmSs(ctx.parsed) + ' (' + pct + ')';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     /**
      * Dessine les graphiques 360° : historique Qualité (Line) + KPIs Production (Bar) + Planning (Doughnut).
      * @param {HTMLElement} containerEl - Conteneur contenant les canvas (ids: agent360-qualite, agent360-telephone, agent360-courriels-volumes, agent360-watt, planning360Chart)
-     * @param {object} data - { qualiteHistory: [], production: { telephone: [], courriels: [], watt: [] }, planning?: { etats: object }, agentId?: number }
+     * @param {object} data - { qualiteHistory: [], production: { telephone: [], courriels: [], watt: [], pauses: [], pausesDetail: [] }, planning?: { etats: object }, agentId?: number }
      */
     function renderAgent360(containerEl, data) {
         destroy(containerEl);
@@ -197,6 +350,8 @@
         var planningEtats = planning.etats || {};
         var courriels = production.courriels || [];
         var watt = production.watt || [];
+        var pauses = production.pauses || [];
+        var pausesDetail = production.pausesDetail || [];
         var telAll = production.telephone || [];
         var telRowGlobal = data.agentId != null
             ? (telAll.find(function (r) { return Number(r.agentId) === Number(data.agentId); }) || null)
@@ -1180,8 +1335,50 @@
             }
         }
 
+        // ---- Pauses – graphique ----
+        var pauseRow = data.agentId != null
+            ? (pauses.find(function (r) { return Number(r.agentId) === Number(data.agentId); }) || null)
+            : (pauses[0] || null);
+
+        var canvasPauses = getCanvas('agent360-pauses-chart', containerEl);
+        if (canvasPauses) {
+            renderPausesChart(canvasPauses, pauseRow);
+        }
+
+        var canvasPausesDurees = getCanvas('agent360-pauses-durees-chart', containerEl);
+        if (canvasPausesDurees) {
+            renderPausesDureesChart(canvasPausesDurees, pauseRow);
+        }
+
+        // ---- Pauses – tableau détail par jour ----
+        var pausesTableContainer = containerEl ? containerEl.querySelector('#agent360-pauses-table-container') : null;
+        if (pausesTableContainer) {
+            var agentIdNumPauses = data.agentId != null ? Number(data.agentId) : NaN;
+            var agentPausesRows = !isNaN(agentIdNumPauses)
+                ? pausesDetail.filter(function (r) { return r && Number(r.agentId) === agentIdNumPauses; })
+                : pausesDetail;
+            try {
+                var pausesTableHtml = UI && typeof UI.buildPausesDetailTableHtml === 'function'
+                    ? UI.buildPausesDetailTableHtml(agentPausesRows)
+                    : '';
+                if (pausesTableHtml) {
+                    pausesTableContainer.innerHTML = pausesTableHtml;
+                    pausesTableContainer.classList.remove('hidden');
+                    pausesTableContainer.classList.add('block');
+                } else {
+                    pausesTableContainer.classList.add('hidden');
+                    pausesTableContainer.classList.remove('block');
+                }
+            } catch (e) {
+                console.error('Agent360 table Pauses:', e);
+                pausesTableContainer.innerHTML = '<div class="px-4 py-3 border-b border-gray-100"><p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses \u2013 D\u00e9tail par jour</p></div><div class="text-xs text-rose-500 p-2">Erreur lors de la g\u00e9n\u00e9ration des d\u00e9tails.</div>';
+                pausesTableContainer.classList.remove('hidden');
+                pausesTableContainer.classList.add('block');
+            }
+        }
+
         if (UI && typeof UI.initCollapsibleTableToggles === 'function') {
-            UI.initCollapsibleTableToggles(containerEl, expandedByDefault, ['agent360-tel-table-container', 'agent360-courriels-table-container', 'agent360-watt-table-container']);
+            UI.initCollapsibleTableToggles(containerEl, expandedByDefault, ['agent360-tel-table-container', 'agent360-courriels-table-container', 'agent360-watt-table-container', 'agent360-pauses-table-container']);
         }
     }
 

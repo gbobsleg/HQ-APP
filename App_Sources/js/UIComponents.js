@@ -366,13 +366,119 @@
         });
     }
 
+    /**
+     * Formate un nombre de secondes en HH:MM:SS.
+     * @param {*} val - Valeur quelconque convertible en nombre
+     * @returns {string}
+     */
+    function formatHhMmSs(val) {
+        var s = Number(val);
+        if (!Number.isFinite(s) || s < 0) return '00:00:00';
+        s = Math.round(s);
+        var h  = Math.floor(s / 3600);
+        var mn = Math.floor((s % 3600) / 60);
+        var sc = s % 60;
+        var p  = function (n) { return n < 10 ? '0' + n : String(n); };
+        return p(h) + ':' + p(mn) + ':' + p(sc);
+    }
+
+    /**
+     * Tableau détail Pauses par jour.
+     * Colonnes : Date | Nb Vol. | Durée Vol. | Nb RONA | Durée RONA | Durée Com. | Post-appel
+     * @param {Array} dailyRows - lignes { date, agentId, nb_pauses_vol, nb_pauses_rona, duree_pauses_vol, duree_pauses_rona, duree_communication, duree_post_appel }
+     * @returns {string}
+     */
+    function buildPausesDetailTableHtml(dailyRows) {
+        if (!dailyRows || !Array.isArray(dailyRows) || dailyRows.length === 0) return '';
+
+        var durCols = ['duree_pauses_vol', 'duree_pauses_rona', 'duree_communication', 'duree_post_appel'];
+        var nbCols  = ['nb_pauses_vol', 'nb_pauses_rona'];
+
+        var rows = dailyRows.filter(function (r) {
+            if (!r) return false;
+            var hasData = nbCols.some(function (k) { return (parseFloat(r[k]) || 0) > 0; });
+            if (!hasData) hasData = durCols.some(function (k) { return (parseFloat(r[k]) || 0) > 0; });
+            return hasData;
+        });
+        if (rows.length === 0) return '';
+
+        rows = rows.slice().sort(function (a, b) {
+            return (a.date || '') < (b.date || '') ? -1 : (a.date || '') > (b.date || '') ? 1 : 0;
+        });
+
+        var th = function (t, align) {
+            var cls = align === 'left'
+                ? 'px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider'
+                : 'px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider';
+            return '<th class="' + cls + '">' + t + '</th>';
+        };
+        var tdR = function (v) {
+            return '<td class="px-4 py-3 text-right text-gray-700 whitespace-nowrap">' + v + '</td>';
+        };
+
+        var totals = { nb_pauses_vol: 0, nb_pauses_rona: 0, duree_pauses_vol: 0, duree_pauses_rona: 0, duree_communication: 0, duree_post_appel: 0 };
+
+        var html = '<div class="agent360-table-header flex items-center justify-between px-6 py-3 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-50 rounded-t-3xl" role="button" tabindex="0" aria-expanded="true">'
+            + '<p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses \u2013 D\u00e9tail par jour</p>'
+            + '<span class="agent360-chevron text-slate-400 transition-transform inline-block">\u25bc</span>'
+            + '</div>';
+        html += '<div class="agent360-table-body overflow-x-auto"><table class="min-w-full w-full text-sm">';
+        html += '<thead class="bg-gray-50"><tr>'
+            + th('Date', 'left')
+            + th('Volontaires')
+            + th('Dur\u00e9e volontaires')
+            + th('Suite \u00e0 RONA')
+            + th('Dur\u00e9e suite \u00e0 RONA')
+            + th('En communication')
+            + th('En post-appel')
+            + '</tr></thead><tbody class="divide-y divide-gray-100">';
+
+        rows.forEach(function (r) {
+            var nbVol  = Math.round(parseFloat(r.nb_pauses_vol)  || 0);
+            var nbRona = Math.round(parseFloat(r.nb_pauses_rona) || 0);
+            var dVol   = parseFloat(r.duree_pauses_vol)    || 0;
+            var dRona  = parseFloat(r.duree_pauses_rona)   || 0;
+            var dCom   = parseFloat(r.duree_communication) || 0;
+            var dPost  = parseFloat(r.duree_post_appel)    || 0;
+            totals.nb_pauses_vol      += nbVol;
+            totals.nb_pauses_rona     += nbRona;
+            totals.duree_pauses_vol   += dVol;
+            totals.duree_pauses_rona  += dRona;
+            totals.duree_communication += dCom;
+            totals.duree_post_appel   += dPost;
+            html += '<tr class="hover:bg-gray-50">'
+                + '<td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">' + formatDateFR(r.date) + '</td>'
+                + tdR(nbVol)
+                + tdR(formatHhMmSs(dVol))
+                + tdR(nbRona)
+                + tdR(formatHhMmSs(dRona))
+                + tdR(formatHhMmSs(dCom))
+                + tdR(formatHhMmSs(dPost))
+                + '</tr>';
+        });
+
+        html += '<tr class="bg-blue-50 font-bold border-t-2 border-blue-200">'
+            + '<td class="px-4 py-3 text-blue-800 whitespace-nowrap">TOTAL</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + totals.nb_pauses_vol + '</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + formatHhMmSs(totals.duree_pauses_vol) + '</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + totals.nb_pauses_rona + '</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + formatHhMmSs(totals.duree_pauses_rona) + '</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + formatHhMmSs(totals.duree_communication) + '</td>'
+            + '<td class="px-4 py-3 text-right text-blue-800">' + formatHhMmSs(totals.duree_post_appel) + '</td>'
+            + '</tr></tbody></table></div>';
+
+        return html;
+    }
+
     global.HQApp.UIComponents = {
         formatMmSs: formatMmSs,
         formatDecimalHours: formatDecimalHours,
+        formatHhMmSs: formatHhMmSs,
         deltaHtml: deltaHtml,
         buildTelephoneTableHtml: buildTelephoneTableHtml,
         buildWattTableHtml: buildWattTableHtml,
         buildCourrielsDetailTableHtml: buildCourrielsDetailTableHtml,
+        buildPausesDetailTableHtml: buildPausesDetailTableHtml,
         buildPlanningTableHtml: buildPlanningTableHtml,
         initCollapsibleTableToggles: initCollapsibleTableToggles
     };

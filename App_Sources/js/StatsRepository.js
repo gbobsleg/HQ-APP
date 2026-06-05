@@ -1124,11 +1124,158 @@
         });
     }
 
+    // ── Pauses ────────────────────────────────────────────────────────────────
+
+    var COLUMN_MAPPING_PAUSES = [
+        { production: 'Date jour',                        internal: 'date' },
+        { production: 'Code de connexion du COS',         internal: 'matricule' },
+        { production: 'Nombre de pauses volontaires',     internal: 'nb_pauses_vol' },
+        { production: 'Duree des pauses volontaires',     internal: 'duree_pauses_vol' },
+        { production: 'Durée des pauses volontaires',     internal: 'duree_pauses_vol' },
+        { production: 'Nombre de pauses suite RONA',      internal: 'nb_pauses_rona' },
+        { production: 'Duree des pauses suite RONA',      internal: 'duree_pauses_rona' },
+        { production: 'Durée des pauses suite RONA',      internal: 'duree_pauses_rona' },
+        { production: 'Duree en communication',           internal: 'duree_communication' },
+        { production: 'Durée en communication',           internal: 'duree_communication' },
+        { production: 'Duree en post-appel',              internal: 'duree_post_appel' },
+        { production: 'Durée en post-appel',              internal: 'duree_post_appel' }
+    ];
+
+    /**
+     * Charge les stats Pauses depuis Data_Stats/pauses_YYYY-MM.csv.
+     * @param {FileSystemDirectoryHandle} rootHandle
+     * @param {object} [options] - { dateFrom?, dateTo?, agents? }
+     * @returns {Promise<{ stats: Array, detail: Array }>}
+     *   stats  : agrégat par agent ({ agentId, nb_pauses_vol, nb_pauses_rona, duree_pauses_vol, duree_pauses_rona, duree_communication, duree_post_appel, nb_pauses_total, duree_pauses_total })
+     *   detail : lignes brutes par jour ({ date, agentId, nb_pauses_vol, nb_pauses_rona, duree_pauses_vol, duree_pauses_rona, duree_communication, duree_post_appel })
+     */
+    function loadPausesStats(rootHandle, options) {
+        options = options || {};
+        var rawFrom = options.dateFrom != null ? String(options.dateFrom) : '';
+        var rawTo   = options.dateTo   != null ? String(options.dateTo)   : '';
+        var dateFrom = normalizeDateToISO(rawFrom);
+        var dateTo   = normalizeDateToISO(rawTo);
+        var agents   = options.agents || (typeof global.LISTE_AGENTS !== 'undefined' ? global.LISTE_AGENTS : []);
+
+        var empty = { stats: [], detail: [] };
+
+        if (!dateFrom || !dateTo) {
+            var ref = new Date();
+            var t = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 12, 0, 0, 0);
+            var first = new Date(t.getFullYear(), t.getMonth(), 1, 12, 0, 0, 0);
+            var last  = new Date(t.getFullYear(), t.getMonth() + 1, 0, 12, 0, 0, 0);
+            var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+            dateFrom = first.getFullYear() + '-' + pad(first.getMonth() + 1) + '-' + pad(first.getDate());
+            dateTo   = last.getFullYear()  + '-' + pad(last.getMonth() + 1)  + '-' + pad(last.getDate());
+        }
+
+        var fp = dateFrom.split('-');
+        var baseAnnee = parseInt(fp[0], 10);
+        var baseMois  = parseInt(fp[1], 10);
+        if (isNaN(baseAnnee) || isNaN(baseMois) || baseMois < 1 || baseMois > 12) {
+            return Promise.resolve(empty);
+        }
+        if (!fsManager || !rootHandle) return Promise.resolve(empty);
+
+        var tp = dateTo.split('-');
+        var endY = parseInt(tp[0], 10);
+        var endM = parseInt(tp[1], 10);
+        if (isNaN(endY) || isNaN(endM) || endM < 1 || endM > 12) { endY = baseAnnee; endM = baseMois; }
+
+        var monthsToLoad = [];
+        var y = baseAnnee, m = baseMois;
+        while (y < endY || (y === endY && m <= endM)) {
+            monthsToLoad.push({ mois: m, annee: y });
+            if (m === 12) { m = 1; y++; } else { m++; }
+        }
+
+        return fsManager.getDataStatsDir(rootHandle).then(function (dataStatsDir) {
+            return fsManager.listEntries(dataStatsDir).then(function (entries) {
+                var files = entries.filter(function (e) { return e.kind === 'file' && e.name.toLowerCase().endsWith('.csv'); });
+                var rawRows = [];
+                var promises = [];
+
+                monthsToLoad.forEach(function (period) {
+                    var fileName = csvFileNameForPeriod('pauses', period.mois, period.annee);
+                    if (!files.some(function (f) { return f.name === fileName; })) return;
+                    promises.push(
+                        fsManager.readFileText(dataStatsDir, fileName).then(function (text) {
+                            if (typeof global.Papa === 'undefined') return;
+                            var delimiter = detectDelimiter(text);
+                            var result = global.Papa.parse(text, { header: true, delimiter: delimiter });
+                            var parsed = result.data && Array.isArray(result.data) ? result.data : [];
+                            var rawHeaders = parsed.length > 0 ? Object.keys(parsed[0]) : [];
+                            var headerMap = buildHeaderToInternalMap(COLUMN_MAPPING_PAUSES, rawHeaders);
+                            parsed.forEach(function (rawRow) {
+                                if (isRowEmpty(rawRow)) return;
+                                var dto = rowToDto(rawRow, COLUMN_MAPPING_PAUSES, headerMap);
+                                var agentId = resolveAgentId(dto.matricule, agents);
+                                if (agentId == null) return;
+                                var rowDate = (dto.date || '').trim();
+                                if (rowDate && dateFrom && rowDate < dateFrom) return;
+                                if (rowDate && dateTo   && rowDate > dateTo)   return;
+                                dto.agentId = agentId;
+                                delete dto.matricule;
+                                rawRows.push(dto);
+                            });
+                        }).catch(function () {})
+                    );
+                });
+
+                return Promise.all(promises).then(function () {
+                    var byAgent = {};
+                    rawRows.forEach(function (r) {
+                        var id = r.agentId;
+                        if (!byAgent[id]) {
+                            byAgent[id] = { agentId: id, nb_pauses_vol: 0, nb_pauses_rona: 0, duree_pauses_vol: 0, duree_pauses_rona: 0, duree_communication: 0, duree_post_appel: 0 };
+                        }
+                        byAgent[id].nb_pauses_vol      += safeParseNumber(r.nb_pauses_vol);
+                        byAgent[id].nb_pauses_rona     += safeParseNumber(r.nb_pauses_rona);
+                        byAgent[id].duree_pauses_vol   += safeParseNumber(r.duree_pauses_vol);
+                        byAgent[id].duree_pauses_rona  += safeParseNumber(r.duree_pauses_rona);
+                        byAgent[id].duree_communication += safeParseNumber(r.duree_communication);
+                        byAgent[id].duree_post_appel   += safeParseNumber(r.duree_post_appel);
+                    });
+                    var stats = Object.keys(byAgent).map(function (id) {
+                        var a = byAgent[id];
+                        return {
+                            agentId:            a.agentId,
+                            nb_pauses_vol:      a.nb_pauses_vol,
+                            nb_pauses_rona:     a.nb_pauses_rona,
+                            duree_pauses_vol:   a.duree_pauses_vol,
+                            duree_pauses_rona:  a.duree_pauses_rona,
+                            duree_communication: a.duree_communication,
+                            duree_post_appel:   a.duree_post_appel,
+                            nb_pauses_total:    a.nb_pauses_vol + a.nb_pauses_rona,
+                            duree_pauses_total: a.duree_pauses_vol + a.duree_pauses_rona
+                        };
+                    });
+                    var detail = rawRows.map(function (r) {
+                        return {
+                            date:                r.date || '',
+                            agentId:             r.agentId,
+                            nb_pauses_vol:       safeParseNumber(r.nb_pauses_vol),
+                            nb_pauses_rona:      safeParseNumber(r.nb_pauses_rona),
+                            duree_pauses_vol:    safeParseNumber(r.duree_pauses_vol),
+                            duree_pauses_rona:   safeParseNumber(r.duree_pauses_rona),
+                            duree_communication: safeParseNumber(r.duree_communication),
+                            duree_post_appel:    safeParseNumber(r.duree_post_appel)
+                        };
+                    });
+                    return { stats: stats, detail: detail };
+                });
+            });
+        }).catch(function () {
+            return empty;
+        });
+    }
+
     var StatsRepository = {
         loadProductionStats: loadProductionStats,
         aggregatePerimeterStats: aggregatePerimeterStats,
         loadQualiteHistory: loadQualiteHistory,
-        loadPlanningStats: loadPlanningStats
+        loadPlanningStats: loadPlanningStats,
+        loadPausesStats: loadPausesStats
     };
 
     global.HQApp.StatsRepository = StatsRepository;
