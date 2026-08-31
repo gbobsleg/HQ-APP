@@ -788,7 +788,8 @@ function app() {
             if (id == null || id === '') return 'Aucun';
             const numId = parseInt(id, 10);
             const m = this.managers.find(mgr => Number(mgr.id) === numId);
-            return m ? m.nom : 'Aucun';
+            if (m) return m.nom;
+            return this._orphanManagerLabel(numId);
         },
 
         getEvaluatorName(id, isManagerCampaign) {
@@ -3983,6 +3984,15 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             return Array.isArray(this.selectedAgents) && this.selectedAgents.length > 0;
         },
 
+        get managersForAssignUi() {
+            const known = (this.managers || []).map(m => ({ id: Number(m.id), nom: m.nom }));
+            const knownIds = new Set(known.map(m => m.id));
+            const orphans = this._orphanManagerIds()
+                .filter(id => !knownIds.has(id))
+                .map(id => ({ id, nom: this._orphanManagerLabel(id) }));
+            return known.concat(orphans).sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr'));
+        },
+
         get filteredPoolAgents() {
             let list = this.poolAgents || [];
             if (this.poolFilterSite !== '' && this.poolFilterSite != null) {
@@ -4166,6 +4176,61 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             }
         },
 
+        _orphanManagerLabel(id) {
+            return 'Manager retiré (#' + Number(id) + ')';
+        },
+
+        _isKnownManager(id) {
+            const num = Number(id);
+            if (!Number.isFinite(num)) return false;
+            return (this.managers || []).some(m => Number(m.id) === num);
+        },
+
+        _assignedAgentIdSet() {
+            const ids = new Set();
+            Object.values(this.assignments || {}).forEach(arr => {
+                (arr || []).forEach(aid => ids.add(Number(aid)));
+            });
+            return ids;
+        },
+
+        _hierarchyManagerIds(agentList) {
+            const ids = new Set();
+            (agentList || []).forEach(agent => {
+                if (agent.managerId == null || agent.managerId === '') return;
+                const mid = Number(agent.managerId);
+                if (this._isKnownManager(mid)) ids.add(mid);
+            });
+            return [...ids];
+        },
+
+        _persistedCampaignAgentIds(config) {
+            return Array.isArray(config?.agent_ids) ? config.agent_ids.map(Number) : [];
+        },
+
+        _newCampaignAgentIds(config) {
+            const persisted = new Set(this._persistedCampaignAgentIds(config));
+            return (this.campaignAgents || []).map(Number).filter(id => !persisted.has(id));
+        },
+
+        _orphanManagerIds() {
+            const ids = new Set();
+            (this.selectedSupervisors || []).forEach(id => ids.add(Number(id)));
+            Object.keys(this.assignments || {}).forEach(k => {
+                if ((this.assignments[k] || []).length > 0) ids.add(Number(k));
+            });
+            return [...ids].filter(id => Number.isFinite(id) && !this._isKnownManager(id));
+        },
+
+        _stripForcedEverywhere(forcedMap, agentId) {
+            const aid = Number(agentId);
+            Object.keys(forcedMap || {}).forEach(k => {
+                if (Array.isArray(forcedMap[k])) {
+                    forcedMap[k] = forcedMap[k].filter(a => Number(a) !== aid);
+                }
+            });
+        },
+
         updateSupervisorSelection() {
             this.selectedSupervisors = (this.selectedSupervisors || []).map(id => Number(id));
             this.selectedSupervisors.forEach(id => {
@@ -4183,24 +4248,55 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         },
 
         assignAgentToSupervisor(agentId, supId) {
-            if (!supId || !this.selectedSupervisors.includes(supId)) return;
+            const sid = Number(supId);
+            if (!sid || !(this.selectedSupervisors || []).map(Number).includes(sid)) return;
             const idx = this.poolAgents.findIndex(a => a.id === agentId);
             if (idx === -1) return;
             this.poolAgents.splice(idx, 1);
-            if (!this.assignments[supId]) this.assignments[supId] = [];
-            if (!this.assignments[supId].includes(agentId)) this.assignments[supId].push(agentId);
-            if (!this.forcedAssignments[supId]) this.forcedAssignments[supId] = [];
-            if (!this.forcedAssignments[supId].includes(agentId)) this.forcedAssignments[supId].push(agentId);
+            if (!this.assignments[sid]) this.assignments[sid] = [];
+            if (!this.assignments[sid].includes(agentId)) this.assignments[sid].push(agentId);
+            if (!this.forcedAssignments[sid]) this.forcedAssignments[sid] = [];
+            if (!this.forcedAssignments[sid].includes(agentId)) this.forcedAssignments[sid].push(agentId);
         },
 
         moveAgentToPool(agentId, supId) {
             const id = parseInt(agentId);
             const sup = parseInt(supId);
             if (!this.assignments[sup]) return;
-            this.assignments[sup] = this.assignments[sup].filter(a => a !== id);
-            if (this.forcedAssignments[sup]) this.forcedAssignments[sup] = this.forcedAssignments[sup].filter(a => a !== id);
+            this.assignments[sup] = this.assignments[sup].filter(a => Number(a) !== id);
+            this._stripForcedEverywhere(this.forcedAssignments, id);
             const agent = this.getAgentById(id);
-            if (agent && !this.poolAgents.some(a => a.id === id)) this.poolAgents.push(agent);
+            if (agent && !this.poolAgents.some(a => Number(a.id) === id)) this.poolAgents.push(agent);
+        },
+
+        _dumpManagerColumnToPool(managerId) {
+            const id = Number(managerId);
+            const nextAssignments = { ...(this.assignments || {}) };
+            const nextForced = { ...(this.forcedAssignments || {}) };
+            const column = (nextAssignments[id] || []).map(Number);
+            column.forEach(aid => this._stripForcedEverywhere(nextForced, aid));
+            nextAssignments[id] = [];
+            nextForced[id] = [];
+            this.assignments = nextAssignments;
+            this.forcedAssignments = nextForced;
+            this.selectedSupervisors = (this.selectedSupervisors || []).map(Number).filter(sid => sid !== id);
+            this.updatePoolFromAssignments();
+        },
+
+        onAssignToManagerToggle(managerId) {
+            const id = Number(managerId);
+            const selected = (this.selectedSupervisors || []).map(Number);
+            if (selected.includes(id)) {
+                const count = (this.assignments[id] || []).length;
+                if (count > 0 && !confirm(`Décocher ce manager enverra ${count} agent(s) dans le pool. Continuer ?`)) {
+                    return;
+                }
+                this._dumpManagerColumnToPool(id);
+                return;
+            }
+            this.selectedSupervisors = [...selected, id];
+            this.assignments = { ...this.assignments, [id]: [] };
+            this.forcedAssignments = { ...this.forcedAssignments, [id]: [] };
         },
 
         reassignAgent(agentId, fromSupId, toSupIdOrPool) {
@@ -4222,8 +4318,9 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         },
 
         updatePoolFromAssignments() {
-            const assignedIds = Object.values(this.assignments || {}).flat().map(id => Number(id));
-            this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id) && !assignedIds.includes(a.id));
+            const assignedIds = this._assignedAgentIdSet();
+            const campaignSet = new Set((this.campaignAgents || []).map(Number));
+            this.poolAgents = this.allAgents.filter(a => campaignSet.has(Number(a.id)) && !assignedIds.has(Number(a.id)));
         },
 
         getQuota(supId) {
@@ -4268,6 +4365,30 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
 
         resetAssignments() {
             if (!confirm("Réinitialiser toutes les assignations ?")) return;
+            if (this.assignToManager) {
+                const campaignSet = new Set((this.campaignAgents || []).map(Number));
+                const agents = (this.allAgents || []).filter(a => campaignSet.has(Number(a.id)));
+                const nextAssignments = {};
+                const nextForced = {};
+                this._hierarchyManagerIds(agents).forEach(mid => {
+                    nextAssignments[mid] = [];
+                    nextForced[mid] = [];
+                });
+                agents.forEach(agent => {
+                    const mid = agent.managerId != null && agent.managerId !== '' ? Number(agent.managerId) : null;
+                    if (mid != null && this._isKnownManager(mid)) {
+                        if (!nextAssignments[mid].includes(Number(agent.id))) {
+                            nextAssignments[mid].push(Number(agent.id));
+                        }
+                    }
+                });
+                this.assignments = nextAssignments;
+                this.forcedAssignments = nextForced;
+                this.selectedSupervisors = Object.keys(nextAssignments).map(Number);
+                this.updatePoolFromAssignments();
+                this.notify("Assignations réinitialisées");
+                return;
+            }
             this.assignments = {};
             this.forcedAssignments = {};
             this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
@@ -4328,6 +4449,12 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 const dirHandle = this.isEditingCampaign && this.currentCampaignHandle
                     ? this.currentCampaignHandle
                     : await this.campagnesHandle.getDirectoryHandle(campaignName, { create: true });
+
+                let priorConfig = null;
+                try {
+                    priorConfig = await fsManager.readCampaignConfig(dirHandle);
+                } catch (e) { priorConfig = null; }
+
                 const persistResult = await this.saveCampaignConfig(dirHandle, false);
                 if (persistResult && persistResult.demoted) {
                     this.notify("Campagne repassée en brouillon : validez à nouveau la répartition.");
@@ -4335,50 +4462,57 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 if (!this.currentCampaignHandle) this.currentCampaignHandle = dirHandle;
 
                 this.campaignAgents = this.selectedAgents.map(id => Number(id));
+                const campaignSet = new Set(this.campaignAgents);
                 this.assignments = {};
                 this.forcedAssignments = {};
-                this.poolAgents = this.allAgents.filter(a => this.campaignAgents.includes(a.id));
+                this.poolAgents = this.allAgents.filter(a => campaignSet.has(Number(a.id)));
                 this.poolFilterSite = '';
                 this.poolFilterSearch = '';
                 this.poolFilterSupervisor = '';
                 this.selectedSupervisors = [];
                 if (!this.supervisorWeights) this.supervisorWeights = {};
 
-                let config = null;
-                try {
-                    config = await fsManager.readCampaignConfig(dirHandle);
-                } catch (e) { config = null; }
-
-                if (config && config.assignments && typeof config.assignments === 'object') {
-                    Object.entries(config.assignments).forEach(([supId, block]) => {
+                if (priorConfig && priorConfig.assignments && typeof priorConfig.assignments === 'object') {
+                    Object.entries(priorConfig.assignments).forEach(([supId, block]) => {
                         const id = parseInt(supId);
                         const agentIds = block && block.agent_ids ? block.agent_ids : [];
-                        this.assignments[id] = agentIds.map(x => parseInt(x));
-                        this.forcedAssignments[id] = Array.isArray(block?.forced_ids) ? block.forced_ids.map(x => parseInt(x)) : [];
+                        this.assignments[id] = agentIds.map(x => parseInt(x)).filter(aid => campaignSet.has(aid));
+                        this.forcedAssignments[id] = (Array.isArray(block?.forced_ids) ? block.forced_ids.map(x => parseInt(x)) : [])
+                            .filter(aid => campaignSet.has(aid));
                         if (block && typeof block.weight === 'number') this.supervisorWeights[id] = block.weight;
                     });
                 }
 
-                if (config && Array.isArray(config.participating_supervisors) && config.participating_supervisors.length > 0) {
-                    this.selectedSupervisors = config.participating_supervisors.map(id => parseInt(id));
-                } else if (this.assignToManager) {
-                    const managerIds = [...new Set(this.poolAgents.map(a => a.managerId).filter(id => id != null && id !== ''))];
-                    this.selectedSupervisors = managerIds.map(id => parseInt(id));
-                } else if (Object.keys(this.assignments).length > 0) {
-                    this.selectedSupervisors = Object.keys(this.assignments).map(k => parseInt(k));
-                }
-
                 if (this.assignToManager) {
+                    const selected = new Set();
+                    if (Array.isArray(priorConfig?.participating_supervisors)) {
+                        priorConfig.participating_supervisors.forEach(id => selected.add(Number(id)));
+                    }
+                    Object.keys(this.assignments).forEach(k => {
+                        if ((this.assignments[k] || []).length > 0) selected.add(Number(k));
+                    });
+
+                    this._newCampaignAgentIds(priorConfig).forEach(aid => {
+                        const agent = this.getAgentById(aid);
+                        if (!agent) return;
+                        const mid = agent.managerId != null && agent.managerId !== '' ? Number(agent.managerId) : null;
+                        if (mid == null || !this._isKnownManager(mid)) return;
+                        if (!this.assignments[mid]) this.assignments[mid] = [];
+                        if (!this.forcedAssignments[mid]) this.forcedAssignments[mid] = [];
+                        const already = this.assignments[mid].map(Number).includes(Number(agent.id));
+                        if (!already) this.assignments[mid].push(Number(agent.id));
+                        selected.add(mid);
+                    });
+
+                    this.selectedSupervisors = [...selected].filter(id => Number.isFinite(id));
                     this.selectedSupervisors.forEach(id => {
                         if (!this.assignments[id]) this.assignments[id] = [];
                         if (!this.forcedAssignments[id]) this.forcedAssignments[id] = [];
                     });
-                    this.poolAgents.forEach(agent => {
-                        const mid = agent.managerId != null ? parseInt(agent.managerId) : null;
-                        if (mid != null && this.assignments[mid] && !this.assignments[mid].includes(agent.id)) {
-                            this.assignments[mid].push(agent.id);
-                        }
-                    });
+                } else if (priorConfig && Array.isArray(priorConfig.participating_supervisors) && priorConfig.participating_supervisors.length > 0) {
+                    this.selectedSupervisors = priorConfig.participating_supervisors.map(id => parseInt(id));
+                } else if (Object.keys(this.assignments).length > 0) {
+                    this.selectedSupervisors = Object.keys(this.assignments).map(k => parseInt(k));
                 }
 
                 this.updateSupervisorSelection();
