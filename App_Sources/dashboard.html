@@ -428,7 +428,7 @@
             <div x-show="$store.dashboard.activeTab === 'campagnes'">
                 <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 italic">Campagnes Régionales</h3>
                 <nav class="space-y-3">
-                    <template x-for="folder in folders" :key="folder.name">
+                    <template x-for="folder in operationalFolders" :key="folder.name">
                         <button @click="loadCampaign(folder)" 
                              :class="selectedFolder === folder.name ? 'bg-indigo-600 text-white shadow-lg' : (folder.status === 'closed' ? 'bg-slate-100/80 hover:bg-slate-100 text-slate-600' : 'hover:bg-slate-50 text-slate-600')"
                              class="w-full text-left p-4 rounded-2xl transition-all flex items-center gap-3 group">

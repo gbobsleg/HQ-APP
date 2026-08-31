@@ -66,12 +66,13 @@
                 </button>
                 <template x-for="folder in folders" :key="folder.name">
                     <div class="w-full p-4 rounded-2xl transition-all flex flex-col gap-1">
-                        <div class="flex items-center justify-between gap-2 group" :class="folder.status === 'closed' ? 'bg-slate-100/80' : ''">
+                        <div class="flex items-center justify-between gap-2 group" :class="folder.status === 'closed' ? 'bg-slate-100/80' : (folder.status === 'draft' ? 'bg-amber-50/80' : '')">
                             <button x-show="folder.status !== 'closed'"
                                     @click="editCampaign(folder.name)"
                                     :class="selectedCampaignForAdmin === folder.name ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-600'"
                                     class="flex-1 text-left p-2 -m-2 rounded-xl transition-all flex items-center justify-between min-w-0">
                                 <span class="font-bold text-sm truncate" x-text="folder.name"></span>
+                                <span x-show="folder.status === 'draft'" class="shrink-0 bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">Brouillon</span>
                                 <span class="text-lg opacity-0 group-hover:opacity-100 transition-opacity shrink-0">→</span>
                             </button>
                             <span x-show="folder.status === 'closed'" class="flex-1 font-bold text-sm truncate text-slate-600" x-text="folder.name"></span>
@@ -543,7 +544,7 @@
                                 x-text="isEditingCampaign ? 'Valider la répartition' : 'Enregistrer la campagne'">
                         </button>
                     </div>
-                    <p class="text-[10px] text-slate-500 mt-2">Enregistrer sauvegarde la campagne sans lancer la répartition. Le wizard en 3 étapes prépare ensuite la transition vers la répartition.</p>
+                    <p class="text-[10px] text-slate-500 mt-2">Les étapes 1 et 2 enregistrent un brouillon, invisible sur Pilotage, Dashboard et Saisie. « Valider la répartition » active la campagne. Modifier les agents d'une campagne active sans revalider l'étape 3 la retire de Pilotage jusqu'à nouvelle validation.</p>
                     <p x-show="!campagnesHandle" class="text-[10px] text-rose-500 mt-3 italic font-bold text-center">
                         ⚠️ L'accès au dossier n'est pas réactivé. Cliquez sur "Rafraîchir" en haut à droite.
                     </p>

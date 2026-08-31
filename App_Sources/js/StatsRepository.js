@@ -768,6 +768,10 @@
             var promises = dirs.map(function (e) {
                 return campagnesHandle.getDirectoryHandle(e.name).then(function (campaignDir) {
                     return fsManager.readCampaignConfig(campaignDir).then(function (config) {
+                        var rawStatus = config && config.status;
+                        var statusMissing = (rawStatus == null || rawStatus === '');
+                        var includeHistory = statusMissing || rawStatus === 'active' || rawStatus === 'closed';
+                        if (!includeHistory) return [];
                         var campaignName = config && config.name ? config.name : e.name;
                         var periodStart = config && config.period_start ? config.period_start : '';
                         var periodEnd = config && config.period_end ? config.period_end : '';

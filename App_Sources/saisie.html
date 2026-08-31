@@ -41,6 +41,11 @@
 <body x-cloak class="bg-slate-50 min-h-screen text-slate-800" x-data="app()" x-init="init(); $nextTick(() => { grid.forEach((c,i) => c.collapsed = i !== 0); })" :class="{ 'saisie-contexte-agent': agentContext.active }">
     <nav class="sticky top-0 z-50 bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
 
+    <div x-show="isCampaignDraft" class="bg-amber-50 border-b border-amber-200 text-amber-800 px-4 py-3 text-sm font-bold text-center">
+        Cette campagne est en brouillon et n'est pas encore évaluable.
+        <a href="admin-campagnes.html" class="underline hover:text-amber-950">Finalisez la répartition dans Admin – Campagnes</a>.
+    </div>
+
     <!-- HEADER CONTEXTUEL (DOSSIER AGENT) -->
     <template x-if="agentContext.active">
         <div class="bg-white border-b border-slate-200 sticky top-[68px] z-40 shadow-sm">
@@ -71,11 +76,11 @@
                                           }"></span>
                                     <span x-text="tab.label"></span>
                                     <template x-if="tab.type === 'eval'">
-                                        <span x-show="!isCampaignClosed" @click.stop="removeEvalTab(index)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 text-xs leading-none">×</span>
+                                        <span x-show="!isCampaignLocked" @click.stop="removeEvalTab(index)" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-400 text-xs leading-none">×</span>
                                     </template>
                                 </button>
                             </template>
-                            <button x-show="!isCampaignClosed" @click="addEvalTab()" class="px-3 py-2 rounded-lg font-bold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border border-dashed border-slate-300 hover:border-indigo-300 text-xs shrink-0">
+                            <button x-show="!isCampaignLocked" @click="addEvalTab()" class="px-3 py-2 rounded-lg font-bold text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border border-dashed border-slate-300 hover:border-indigo-300 text-xs shrink-0">
                                 +
                             </button>
                             <button type="button" @click="openPanel360()" class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors shrink-0" title="Voir l'historique 360°">📊 Voir l'historique 360°</button>
@@ -121,7 +126,7 @@
                             <!-- Selectors (Only if NOT in context) -->
                             <template x-if="!agentContext.active">
                                 <div class="space-y-4">
-                                    <select x-model="form.agent" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <select x-model="form.agent" :disabled="isCampaignLocked" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                         <option value="">-- Choisir Agent --</option>
                                         <template x-for="group in groupedAgents" :key="group.site">
                                             <optgroup :label="group.site">
@@ -129,16 +134,16 @@
                                             </optgroup>
                                         </template>
                                     </select>
-                                    <select x-model="form.campagne" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <select x-model="form.campagne" :disabled="isCampaignLocked" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                         <option value="">-- Dossier Campagne --</option>
-                                        <template x-for="f in folders" :key="f.name"><option :value="f.name" x-text="f.name"></option></template>
+                                        <template x-for="f in operationalFolders" :key="f.name"><option :value="f.name" x-text="f.name"></option></template>
                                     </select>
                                 </div>
                             </template>
 
                             <div x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Offre</label>
-                                <select x-model="form.offre" :disabled="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                <select x-model="form.offre" :disabled="isCampaignLocked" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                     <option value="">-- Type d'Offre --</option>
                                     <template x-for="o in appConfig.offers" :key="o"><option :value="o" x-text="o"></option></template>
                                 </select>
@@ -149,18 +154,18 @@
                                     <span x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">Date et heure de la communication</span>
                                     <span x-show="campaignConfig && campaignConfig.campaign_type === 'review'">Date et heure de l'entretien</span>
                                 </label>
-                                <input type="datetime-local" x-model="form.date_communication" :readonly="isCampaignClosed" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                <input type="datetime-local" x-model="form.date_communication" :readonly="isCampaignLocked" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                             </div>
 
                             <div x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Durée de la communication</label>
                                 <div class="relative flex gap-2">
                                     <div class="relative flex-1">
-                                        <input type="number" x-model="form.duree_min" :readonly="isCampaignClosed" placeholder="Min" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
+                                        <input type="number" x-model="form.duree_min" :readonly="isCampaignLocked" placeholder="Min" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
                                     <span class="absolute right-8 top-3 text-slate-300 text-xs font-bold pointer-events-none">min</span>
                                 </div>
                                 <div class="relative flex-1">
-                                    <input type="number" x-model="form.duree_sec" :readonly="isCampaignClosed" placeholder="Sec" max="59" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
+                                    <input type="number" x-model="form.duree_sec" :readonly="isCampaignLocked" placeholder="Sec" max="59" class="w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-center font-bold">
                                     <span class="absolute right-8 top-3 text-slate-300 text-xs font-bold pointer-events-none">sec</span>
                                 </div>
                                 
@@ -180,12 +185,12 @@
                         </div>
 
                         <!-- Bouton Sauvegarde Contextuel ou Standard -->
-                        <template x-if="agentContext.active && !isCampaignClosed">
+                        <template x-if="agentContext.active && !isCampaignLocked">
                             <button @click="saveContextEval()" class="w-full mt-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2">
                                 <span>💾</span> ENREGISTRER L'ONGLET
                             </button>
                         </template>
-                        <template x-if="!agentContext.active && !isCampaignClosed">
+                        <template x-if="!agentContext.active && !isCampaignLocked">
                             <button @click="saveEval()" class="w-full mt-8 bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all">💾 ENREGISTRER</button>
                         </template>
                     </div>
@@ -220,7 +225,7 @@
                         <template x-if="!form.stats_snapshot">
                             <button type="button"
                                     @click="importAgentStats()"
-                                    :disabled="isImportingStats || isCampaignClosed"
+                                    :disabled="isImportingStats || isCampaignLocked"
                                     class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black py-4 rounded-2xl shadow-lg transition-all text-sm">
                                 <span x-text="isImportingStats ? 'Import des statistiques...' : `📸 Capturer et inclure les stats dans l'entretien`"></span>
                             </button>
@@ -253,7 +258,7 @@
                                                 <input type="checkbox"
                                                        :checked="!(form.stats_snapshot.metrics.telephone.hidden)"
                                                        @change="form.stats_snapshot.metrics.telephone.hidden = !$event.target.checked"
-                                                       :disabled="isCampaignClosed"
+                                                       :disabled="isCampaignLocked"
                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                 Inclure
                                             </label>
@@ -285,7 +290,7 @@
                                                                     <input type="checkbox"
                                                                            :checked="!row.hidden"
                                                                            @change="row.hidden = !$event.target.checked"
-                                                                           :disabled="isCampaignClosed"
+                                                                           :disabled="isCampaignLocked"
                                                                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                                 </td>
                                                                 <td class="px-2 py-1 font-bold text-slate-700" x-text="row.offre"></td>
@@ -398,7 +403,7 @@
                                                 <input type="checkbox"
                                                        :checked="!(form.stats_snapshot.metrics.courriels.hidden)"
                                                        @change="form.stats_snapshot.metrics.courriels.hidden = !$event.target.checked"
-                                                       :disabled="isCampaignClosed"
+                                                       :disabled="isCampaignLocked"
                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                 Inclure
                                             </label>
@@ -442,7 +447,7 @@
                                                 <input type="checkbox"
                                                        :checked="!(form.stats_snapshot.metrics.watt.hidden)"
                                                        @change="form.stats_snapshot.metrics.watt.hidden = !$event.target.checked"
-                                                       :disabled="isCampaignClosed"
+                                                       :disabled="isCampaignLocked"
                                                        class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                 Inclure
                                             </label>
@@ -467,7 +472,7 @@
                                                                     <input type="checkbox"
                                                                            :checked="!row.hidden"
                                                                            @change="row.hidden = !$event.target.checked"
-                                                                           :disabled="isCampaignClosed"
+                                                                           :disabled="isCampaignLocked"
                                                                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                                 </td>
                                                                 <td class="px-2 py-1 font-bold text-slate-700" x-text="row.circuit"></td>
@@ -501,7 +506,7 @@
                                 <div class="flex justify-end">
                                     <button type="button"
                                             @click="importAgentStats()"
-                                            :disabled="isImportingStats || isCampaignClosed"
+                                            :disabled="isImportingStats || isCampaignLocked"
                                             class="bg-slate-100 hover:bg-slate-200 disabled:bg-slate-200 disabled:cursor-not-allowed text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors text-xs uppercase tracking-wider">
                                         <span x-text="isImportingStats ? 'Actualisation...' : 'Actualiser les statistiques'"></span>
                                     </button>
@@ -510,7 +515,7 @@
                                 <div>
                                     <label class="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Analyse des statistiques</label>
                                     <textarea x-model="form.stats_analysis_comment"
-                                              :readonly="isCampaignClosed"
+                                              :readonly="isCampaignLocked"
                                               @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                               @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                               @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
@@ -519,7 +524,7 @@
                                               placeholder="Analyse libre du manager (constats, écarts, hypothèses, actions)..."></textarea>
                                 </div>
 
-                                <div class="flex flex-col sm:flex-row gap-2" x-show="!isCampaignClosed">
+                                <div class="flex flex-col sm:flex-row gap-2" x-show="!isCampaignLocked">
                                     <button type="button"
                                             x-show="!appConfig.promptGenerateButtonHidden"
                                             @click="copyStatsPromptToClipboard()"
@@ -587,14 +592,14 @@
                                                         <input type="range" min="0" :max="field.max" :step="(field.step ?? 0.5)"
                                                                x-model="form.scores[field.id]"
                                                                @input="updateNote()"
-                                                               :disabled="isCampaignClosed"
+                                                               :disabled="isCampaignLocked"
                                                                class="w-24 h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-600">
                                                         <span class="w-12 text-right font-black text-indigo-600 text-sm" x-text="(form.scores[field.id] ?? field.max) + '/' + field.max"></span>
                                                     </div>
                                                 </div>
                                                 <div x-show="showComment" x-transition class="mt-3 ml-2 mr-2">
                                                     <textarea x-model="form.comments[field.id]"
-                                                              :readonly="isCampaignClosed"
+                                                              :readonly="isCampaignLocked"
                                                               @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                                               @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                                               @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
@@ -620,7 +625,7 @@
                                                     </template>
                                                 </div>
                                                 <textarea x-model="form.textResponses[field.id]"
-                                                          :readonly="isCampaignClosed"
+                                                          :readonly="isCampaignLocked"
                                                           @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                                           @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                                           @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
@@ -633,7 +638,7 @@
                                             <div class="border-b border-slate-50 last:border-0 pb-4 mb-4 last:pb-0 last:mb-0 flex items-center gap-3">
                                                 <label class="flex items-center gap-2 cursor-pointer flex-1">
                                                     <input type="checkbox" x-model="form.booleanResponses[field.id]"
-                                                           :disabled="isCampaignClosed"
+                                                           :disabled="isCampaignLocked"
                                                            class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                                                     <span class="text-sm font-bold text-slate-700" x-text="field.label"></span>
                                                 </label>
@@ -658,7 +663,7 @@
 
                     <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm" x-show="!campaignConfig || campaignConfig.campaign_type !== 'review'">
                         <label class="block text-xs font-black text-slate-400 uppercase mb-4 tracking-widest text-center italic">Commentaires & Axes de progrès</label>
-                        <div class="flex flex-col sm:flex-row gap-2 mb-3" x-show="!isCampaignClosed">
+                        <div class="flex flex-col sm:flex-row gap-2 mb-3" x-show="!isCampaignLocked">
                             <button type="button"
                                     x-show="!appConfig.promptGenerateButtonHidden"
                                     @click="copyEvalCommentPromptToClipboard()"
@@ -675,7 +680,7 @@
                                 <span x-text="evalCommentGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
                             </button>
                         </div>
-                        <textarea x-model="form.commentaire" :readonly="isCampaignClosed" @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')" rows="4" class="w-full bg-slate-50 border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-[height] duration-200 ease-out overflow-y-auto resize-none max-h-[40vh]" placeholder="Décrivez les points d'amélioration..."></textarea>
+                        <textarea x-model="form.commentaire" :readonly="isCampaignLocked" @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'" @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')" rows="4" class="w-full bg-slate-50 border p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 transition-[height] duration-200 ease-out overflow-y-auto resize-none max-h-[40vh]" placeholder="Décrivez les points d'amélioration..."></textarea>
                     </div>
                 </section>
             </div>
@@ -710,7 +715,7 @@
                         <p class="text-sm text-indigo-900 leading-relaxed opacity-80 mb-4">
                             Utilisez les commentaires des évaluations précédentes pour synthétiser les progrès et les axes d'amélioration.
                         </p>
-                        <div class="flex flex-col gap-2" x-show="!isCampaignClosed">
+                        <div class="flex flex-col gap-2" x-show="!isCampaignLocked">
                             <button @click="copyBilanPromptToClipboard()"
                                     x-show="!appConfig.promptGenerateButtonHidden"
                                     :disabled="(bilanForm.evals || []).length === 0"
@@ -740,13 +745,13 @@
                                 <span class="text-[10px] text-slate-400" x-show="bilanForm.lastSaved" x-text="'Sauvegardé : ' + new Date(bilanForm.lastSaved).toLocaleTimeString()"></span>
                             </div>
                             <textarea x-model="bilanForm.comment"
-                                      x-bind:readonly="isCampaignClosed"
+                                      x-bind:readonly="isCampaignLocked"
                                       @focus="$el.dataset.baseRows = $el.getAttribute('rows') || '3'; $el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                       @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
                                       @blur="$el.style.height = ''; $el.setAttribute('rows', $el.dataset.baseRows || '3')"
                                       rows="4"
                                       class="w-full bg-slate-50 border border-slate-200 rounded-2xl p-6 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm leading-relaxed resize-none shadow-inner transition-[height] duration-200 ease-out overflow-y-auto max-h-[40vh]"
-                                      :class="{'bg-gray-100': isCampaignClosed}"
+                                      :class="{'bg-gray-100': isCampaignLocked}"
                                       placeholder="Rédigez ici le bilan global, les points forts constatés et les objectifs pour la prochaine période..."></textarea>
                         </div>
 
@@ -754,14 +759,14 @@
 
                     <!-- Actions Bar -->
                     <div class="bg-white p-4 rounded-2xl shadow-lg border border-slate-100 flex flex-wrap items-center gap-2">
-                            <button x-show="!isCampaignClosed && (!campaignConfig || campaignConfig.campaign_type === 'review' || campaignConfig.target_evals !== 1)"
+                            <button x-show="!isCampaignLocked && (!campaignConfig || campaignConfig.campaign_type === 'review' || campaignConfig.target_evals !== 1)"
                                     @click="saveContextBilan()"
                                     class="px-4 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5 whitespace-nowrap"
                                     :class="bilanCommentDirty ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 animate-pulse' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'">
                                 <span>💾</span> Sauvegarder
                             </button>
                             <span class="w-px h-6 bg-slate-200 mx-1 hidden sm:block" aria-hidden="true"></span>
-                            <button x-show="!isCampaignClosed && bilanForm.status !== 'sent'"
+                            <button x-show="!isCampaignLocked && bilanForm.status !== 'sent'"
                                     @click="closeBilan()" 
                                     class="px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                                     title="À utiliser une fois le bilan envoyé au destinataire">
@@ -795,7 +800,7 @@
                         </p>
                         <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                             <input type="email" x-model="bilanForm.email" 
-                                   :readonly="isCampaignClosed"
+                                   :readonly="isCampaignLocked"
                                    class="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                                    placeholder="ex. prenom.nom@domaine.fr">
                             <button @click="sendBilanEmail()" 

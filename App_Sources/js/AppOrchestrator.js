@@ -225,6 +225,7 @@ function app() {
         lastSavedBilanComment: '',
         evalSaveStatus: 'Enregistré',
         isCampaignClosed: false,
+        isCampaignDraft: false,
 
         // Mise à jour depuis GitHub
         updateCheck: { status: 'idle', remoteVersion: '', error: '' },
@@ -523,6 +524,14 @@ function app() {
                 const nom = this.getEvaluatorName(supId, this.campaignAssignToManager);
                 return { id: supId, nom: nom !== 'Aucun' ? nom : 'Évaluateur ' + supId };
             });
+        },
+
+        get operationalFolders() {
+            return (this.folders || []).filter(f => f.status === 'active' || f.status === 'closed');
+        },
+
+        get isCampaignLocked() {
+            return !!(this.isCampaignClosed || this.isCampaignDraft);
         },
 
         _normalizePromptsConfig() {
@@ -1156,16 +1165,23 @@ function app() {
 
                             // Pilotage / Dashboard : sélectionner campagne (URL ?campagne= > mémorisée > première)
                             const isPilotageOrDashboard = /pilotage|dashboard/.test(window.location.pathname || '');
-                            if (isPilotageOrDashboard && this.folders.length > 0 && !this.selectedFolder) {
+                            const opsFolders = this.operationalFolders;
+                            if (isPilotageOrDashboard && opsFolders.length > 0 && !this.selectedFolder) {
                                 const urlCampagne = new URLSearchParams(window.location.search).get('campagne');
-                                let folder = urlCampagne ? this.folders.find(f => f.name === urlCampagne) : null;
+                                let folder = urlCampagne ? opsFolders.find(f => f.name === urlCampagne) : null;
+                                if (urlCampagne && !folder) {
+                                    const raw = this.folders.find(f => f.name === urlCampagne);
+                                    if (raw && raw.status === 'draft') {
+                                        this.notify("Campagne en brouillon — finalisez la répartition dans Admin.", "error");
+                                    }
+                                }
                                 if (!folder) {
                                     try {
                                         const saved = localStorage.getItem('last_selected_campaign');
-                                        if (saved) folder = this.folders.find(f => f.name === saved) || null;
+                                        if (saved) folder = opsFolders.find(f => f.name === saved) || null;
                                     } catch (e) {}
                                 }
-                                await this.loadCampaign(folder || this.folders[0]);
+                                await this.loadCampaign(folder || opsFolders[0]);
                             }
 
                             // Dashboard : lecture des paramètres d'URL et hydratation du store + déclenchement des graphiques
@@ -1399,6 +1415,37 @@ function app() {
             }
         },
 
+        _normalizeCampaignStatus(raw) {
+            if (raw === 'closed') return 'closed';
+            if (raw === 'draft') return 'draft';
+            if (raw === 'active') return 'active';
+            if (raw == null || raw === '') return 'active';
+            return 'draft';
+        },
+
+        _agentIdsEqual(a, b) {
+            const na = (Array.isArray(a) ? a : []).map(Number).filter(n => Number.isFinite(n)).sort((x, y) => x - y);
+            const nb = (Array.isArray(b) ? b : []).map(Number).filter(n => Number.isFinite(n)).sort((x, y) => x - y);
+            if (na.length !== nb.length) return false;
+            for (let i = 0; i < na.length; i++) {
+                if (na[i] !== nb[i]) return false;
+            }
+            return true;
+        },
+
+        _notifyCampaignPersistResult(result, campaignName) {
+            if (!result) return;
+            if (result.demoted) {
+                this.notify("Campagne repassée en brouillon : validez à nouveau la répartition.");
+            } else if (result.status === 'draft') {
+                this.notify("Campagne enregistrée en brouillon.");
+            } else if (campaignName) {
+                this.notify("Campagne '" + campaignName + "' enregistrée.");
+            } else {
+                this.notify("Campagne enregistrée.");
+            }
+        },
+
         // --- DOSSIER AGENT (NOUVEAU) ---
         async loadAgentDossier(agentIdOrName, campaignName) {
             const agent = typeof agentIdOrName === 'number' || (typeof agentIdOrName === 'string' && /^\d+$/.test(agentIdOrName))
@@ -1410,7 +1457,24 @@ function app() {
             }
             const agentId = agent.id;
             const agentDisplayName = this.getAgentDisplayName(agent);
-            
+
+            if (!fsManager) { this.notify("FileSystemManager non chargé.", "error"); return; }
+            this.isCampaignDraft = false;
+            try {
+                const sanitizedName = repository.sanitizeDirectoryName(campaignName);
+                const campaignHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedName);
+                let c = null;
+                try {
+                    c = await fsManager.readCampaignConfig(campaignHandle);
+                } catch (e) { c = null; }
+                if (this._normalizeCampaignStatus(c && c.status) === 'draft') {
+                    this.campaignConfig = c;
+                    this.isCampaignDraft = true;
+                    this.isCampaignClosed = false;
+                    this.notify("Campagne en brouillon — finalisez la répartition dans Admin.", "error");
+                    return;
+                }
+
             this.agentContext.active = true;
             this.agentContext.agentId = agentId;
             this.agentContext.agentName = agentDisplayName;
@@ -1422,21 +1486,15 @@ function app() {
                 clearTimeout(this.statsImportSuccessTimer);
                 this.statsImportSuccessTimer = null;
             }
-            
-            if (!fsManager) { this.notify("FileSystemManager non chargé.", "error"); return; }
-            try {
-                const sanitizedName = repository.sanitizeDirectoryName(campaignName);
-                const campaignHandle = await this.campagnesHandle.getDirectoryHandle(sanitizedName);
+
                 await this.loadGridForCampaign(campaignName);
-                
+
                 let target = this.appConfig.target_evals || 3;
-                try {
-                    const c = await fsManager.readCampaignConfig(campaignHandle);
-                    this.campaignConfig = c || null;
-                    this.isCampaignClosed = (this.campaignConfig && this.campaignConfig.status === 'closed');
-                    if (c && c.target_evals) target = parseInt(c.target_evals);
-                    this._setEnginesFromCampaignType(c && c.campaign_type ? c.campaign_type : 'scoring');
-                } catch(e) { this.campaignConfig = null; this.isCampaignClosed = false; }
+                this.campaignConfig = c || null;
+                this.isCampaignClosed = (this.campaignConfig && this.campaignConfig.status === 'closed');
+                this.isCampaignDraft = false;
+                if (c && c.target_evals) target = parseInt(c.target_evals);
+                this._setEnginesFromCampaignType(c && c.campaign_type ? c.campaign_type : 'scoring');
                 this.targetEvaluations = target;
 
                 const evals = [];
@@ -2168,6 +2226,10 @@ function app() {
         _ensureCampaignNotClosed() {
             if (this.isCampaignClosed) {
                 this.notify("Cette campagne est clôturée, aucune modification n'est autorisée.", "error");
+                return true;
+            }
+            if (this.isCampaignDraft) {
+                this.notify("Cette campagne est en brouillon, aucune modification n'est autorisée. Finalisez la répartition dans Admin.", "error");
                 return true;
             }
             return false;
@@ -3370,7 +3432,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.folders = temp.map(t => ({
                 handle: t.handle,
                 name: t.handle.name,
-                status: (t.config && t.config.status === 'closed') ? 'closed' : 'active',
+                status: this._normalizeCampaignStatus(t.config && t.config.status),
                 campaignType: (t.config && t.config.campaign_type === 'review') ? 'review' : 'scoring',
                 period_start: (t.config && t.config.period_start) ? t.config.period_start : '',
                 period_end: (t.config && t.config.period_end) ? t.config.period_end : ''
@@ -3387,14 +3449,13 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.campaignAssignments = {};
             this.campaignConfig = null;
             this.isCampaignClosed = false;
+            this.isCampaignDraft = false;
             // Réinitialisation des filtres UI (évite liste vide alors que le compteur affiche un nombre)
             this.pilotageFilterSupervisorId = '';
             this.pilotageSearchAgent = '';
             this.selectedFolder = folderName;
             this.isLoadingCampaign = true;
             try {
-                const path = window.location.pathname || '';
-            if (folderName && (path.includes('pilotage') || path.includes('dashboard'))) try { localStorage.setItem('last_selected_campaign', folderName); } catch (e) {}
             await this.loadGridForCampaign(folderName);
             this.allEvaluations = [];
             this.allBilans = [];
@@ -3415,7 +3476,18 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                         const config = await fsManager.readCampaignConfig(dirHandle);
                     this.campaignConfig = config;
                     this.campaignType = (config && config.campaign_type === 'review') ? 'review' : 'scoring';
-                    this.isCampaignClosed = (config && config.status === 'closed');
+                    const normStatus = this._normalizeCampaignStatus(config && config.status);
+                    this.isCampaignClosed = (normStatus === 'closed');
+                    this.isCampaignDraft = (normStatus === 'draft');
+                    if (normStatus === 'draft') {
+                        this.notify("Campagne en brouillon — finalisez la répartition dans Admin.", "error");
+                        this.selectedFolder = null;
+                        return;
+                    }
+                    const path = window.location.pathname || '';
+                    if (folderName && (path.includes('pilotage') || path.includes('dashboard'))) {
+                        try { localStorage.setItem('last_selected_campaign', folderName); } catch (e) {}
+                    }
                     if (config.agent_ids && Array.isArray(config.agent_ids)) {
                         campaignAgentsCount = config.agent_ids.length;
                         this.campaignAgentIds = config.agent_ids;
@@ -3444,6 +3516,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     this.campaignConfig = null;
                     this.campaignType = 'scoring';
                     this.isCampaignClosed = false;
+                    this.isCampaignDraft = false;
                 }
 
                 // 2. Charger les fichiers
@@ -3757,9 +3830,9 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             try {
                 existingConfig = await fsManager.readCampaignConfig(dirHandle);
             } catch (e) { /* pas de fichier ou erreur de lecture */ }
-            if (existingConfig && existingConfig.status === 'closed') {
+            if (existingConfig && this._normalizeCampaignStatus(existingConfig.status) === 'closed') {
                 this.notify("Cette campagne est clôturée, aucune modification n'est autorisée.", "error");
-                return;
+                return null;
             }
 
             let grilleIdValid = 'default';
@@ -3775,10 +3848,36 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 grille_id: grilleIdValid,
                 campaign_type: this.campaignType || 'scoring',
                 assign_to_manager: !!this.assignToManager,
-                status: existingConfig && existingConfig.status ? existingConfig.status : 'active',
+                status: 'draft',
                 period_start: this.period_start || '',
                 period_end: this.period_end || ''
             };
+            const newAgentIds = configData.agent_ids;
+            const newAssign = configData.assign_to_manager;
+            let nextStatus = 'draft';
+            let demoted = false;
+            if (!existingConfig) {
+                nextStatus = 'draft';
+            } else if (includeAssignments) {
+                nextStatus = 'active';
+            } else {
+                const existingNorm = this._normalizeCampaignStatus(existingConfig.status);
+                if (existingNorm === 'draft') {
+                    nextStatus = 'draft';
+                } else if (existingNorm === 'active') {
+                    const idsChanged = !this._agentIdsEqual(existingConfig.agent_ids, newAgentIds);
+                    const assignChanged = !!existingConfig.assign_to_manager !== newAssign;
+                    if (idsChanged || assignChanged) {
+                        nextStatus = 'draft';
+                        demoted = true;
+                    } else {
+                        nextStatus = 'active';
+                    }
+                } else {
+                    nextStatus = existingNorm;
+                }
+            }
+            configData.status = nextStatus;
             if (this.campaignType === 'review') {
                 configData.stats_config = {
                     channels: {
@@ -3799,7 +3898,6 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             } else if (existingConfig) {
                 if (existingConfig.assignments) configData.assignments = existingConfig.assignments;
                 if (existingConfig.participating_supervisors) configData.participating_supervisors = existingConfig.participating_supervisors;
-                if (existingConfig.assign_to_manager !== undefined) configData.assign_to_manager = existingConfig.assign_to_manager;
             }
 
             await fsManager.writeCampaignConfig(dirHandle, configData);
@@ -3813,10 +3911,10 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     else console.error(err);
                 }
             }
+            return { status: nextStatus, demoted: demoted };
         },
 
         async closeCampaign(campaignName) {
-            if (this._ensureCampaignNotClosed()) return;
             if (!campaignName || !this.campagnesHandle || !fsManager) return this.notify("Données manquantes.", "error");
             try {
                 const sanitizedName = repository.sanitizeDirectoryName(campaignName);
@@ -3826,8 +3924,13 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     config = await fsManager.readCampaignConfig(dirHandle);
                 } catch (e) { config = {}; }
                 config = config || {};
-                if (config.status === 'closed') {
+                const norm = this._normalizeCampaignStatus(config.status);
+                if (norm === 'closed') {
                     this.notify("Cette campagne est déjà clôturée.", "info");
+                    return;
+                }
+                if (norm !== 'active') {
+                    this.notify("Impossible de clôturer une campagne en brouillon. Validez d'abord la répartition.", "error");
                     return;
                 }
                 config.status = 'closed';
@@ -3835,6 +3938,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 if (this.selectedFolder === campaignName || this.newCampaignName === campaignName) {
                     this.campaignConfig = config;
                     this.isCampaignClosed = true;
+                    this.isCampaignDraft = false;
                 }
                 await this.refreshData();
                 this.notify("Campagne clôturée.");
@@ -3972,7 +4076,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 try {
                     const content = await fsManager.readCampaignConfig(handle);
                     this.campaignConfig = content;
-                    this.isCampaignClosed = (content && content.status === 'closed');
+                    this.isCampaignClosed = this._normalizeCampaignStatus(content && content.status) === 'closed';
+                    this.isCampaignDraft = this._normalizeCampaignStatus(content && content.status) === 'draft';
                     if (content.agent_ids) this.selectedAgents = content.agent_ids;
                     this.targetEvaluations = content.target_evals || 3;
                     this.campaignType = (content.campaign_type === 'review' ? 'review' : 'scoring');
@@ -4028,8 +4133,8 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
         async updateCampaign() {
              if (!this.currentCampaignHandle) return;
              try {
-                 await this.saveCampaignConfig(this.currentCampaignHandle);
-                 this.notify(`Campagne '${this.newCampaignName}' mise à jour.`);
+                 const persistResult = await this.saveCampaignConfig(this.currentCampaignHandle);
+                 this._notifyCampaignPersistResult(persistResult, this.newCampaignName);
                  this.resetCampaignForm();
              } catch (e) { console.error(e); this.notify("Erreur de mise à jour.", "error"); }
         },
@@ -4046,15 +4151,15 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 const dirHandle = this.isEditingCampaign && this.currentCampaignHandle
                     ? this.currentCampaignHandle
                     : await this.campagnesHandle.getDirectoryHandle(name, { create: true });
-                await this.saveCampaignConfig(dirHandle, false);
+                const persistResult = await this.saveCampaignConfig(dirHandle, false);
                 if (!this.isEditingCampaign) {
                     this.currentCampaignHandle = dirHandle;
                     this.isEditingCampaign = true;
                     this.selectedCampaignForAdmin = name;
                     this.adminShowCreateForm = false;
-                    await this.refreshData();
                 }
-                this.notify(`Campagne '${name}' enregistrée.`);
+                await this.refreshData();
+                this._notifyCampaignPersistResult(persistResult, name);
             } catch (e) {
                 console.error(e);
                 this.notify("Erreur lors de l'enregistrement.", "error");
@@ -4203,7 +4308,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             try {
                 await this._persistAssignments();
                 await this.refreshData();
-                this.notify("Campagne enregistrée.");
+                this.notify("Campagne activée.");
                 this.resetCampaignForm();
             } catch (e) {
                 console.error(e);
@@ -4223,7 +4328,10 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                 const dirHandle = this.isEditingCampaign && this.currentCampaignHandle
                     ? this.currentCampaignHandle
                     : await this.campagnesHandle.getDirectoryHandle(campaignName, { create: true });
-                await this.saveCampaignConfig(dirHandle, false);
+                const persistResult = await this.saveCampaignConfig(dirHandle, false);
+                if (persistResult && persistResult.demoted) {
+                    this.notify("Campagne repassée en brouillon : validez à nouveau la répartition.");
+                }
                 if (!this.currentCampaignHandle) this.currentCampaignHandle = dirHandle;
 
                 this.campaignAgents = this.selectedAgents.map(id => Number(id));
@@ -4316,6 +4424,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.adminShowCreateForm = false;
             this.campaignWizardStep = 1;
             this.selectedCampaignForAdmin = null;
+            this.isCampaignDraft = false;
         },
 
         // --- EXPORT PDF BILAN (délégation au module pdfBilan.js) ---
