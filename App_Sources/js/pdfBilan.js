@@ -1,10 +1,24 @@
 /**
  * Génération du PDF bilan qualité.
- * Dépend de window.jspdf (et jspdf-autotable chargé avant).
+ * Dépend de window.jspdf, jspdf-autotable et window.HQAppPdfFonts (pdfFonts.js).
  * API : window.BilanPdf.generate(options)
  */
 (function () {
     'use strict';
+
+    var PDF_FONT_NAME = (window.HQAppPdfFonts && window.HQAppPdfFonts.PDF_FONT_NAME) || 'NotoSans';
+    var PDF_ALLOWED_RE = /[^\u0000-\u007F\u00A0-\u00FF\u0100-\u017F\u02B0-\u02B3\u02B7\u02B8\u02E1-\u02E3\u1D43\u1D45\u1D47-\u1D49\u1D4D\u1D4F\u1D50\u1D52\u1D56-\u1D58\u1D5B\u1D63\u1DA0\u2010-\u2015\u2018-\u2019\u201C-\u201D\u2070-\u207F]/gu;
+
+    function sanitizePdfGlyphs(text) {
+        return String(text == null ? '' : text).replace(PDF_ALLOWED_RE, '?');
+    }
+
+    function applyPdfFont(doc) {
+        if (window.HQAppPdfFonts && typeof window.HQAppPdfFonts.register === 'function') {
+            window.HQAppPdfFonts.register(doc);
+        }
+        doc.setFont(PDF_FONT_NAME, 'normal');
+    }
 
     function getSections(grid) {
         var sections = (grid && grid.sections) ? grid.sections : (Array.isArray(grid) ? grid : []);
@@ -30,7 +44,7 @@
 
         if (field.type === 'textarea') {
             var txt = (textResponses[id] != null ? String(textResponses[id]) : '').trim();
-            return txt !== '' ? txt : 'Non renseigné';
+            return txt !== '' ? sanitizePdfGlyphs(txt) : 'Non renseigné';
         }
 
         if (field.type === 'boolean') {
@@ -44,7 +58,7 @@
             var suffix = (field.max != null) ? '/' + field.max : '';
             var base = String(raw) + suffix;
             var comment = (comments[id] != null ? String(comments[id]) : '').trim();
-            return comment ? (base + ' — ' + comment) : base;
+            return comment ? (base + ' — ' + sanitizePdfGlyphs(comment)) : base;
         }
 
         return 'Non renseigné';
@@ -64,7 +78,7 @@
         }
 
         function writeParagraph(cursor, text, width, lineHeight, requiredHeadRoom) {
-            var t = (text == null ? '' : String(text)).trim();
+            var t = sanitizePdfGlyphs(text).trim();
             var lines = t ? doc.splitTextToSize(t, width) : [''];
             ensurePageSpace(cursor, (requiredHeadRoom || 0) + lines.length * lineHeight);
             for (var i = 0; i < lines.length; i++) {
@@ -83,6 +97,7 @@
     function generateScoringPdf(options) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
+        applyPdfFont(doc);
         const pageWidth = doc.internal.pageSize.width;
         const margin = 16;
 
@@ -102,12 +117,12 @@
         doc.line(0, 52, pageWidth, 52);
 
         doc.setFontSize(20);
-        doc.setFont(undefined, 'bold');
+        doc.setFont(PDF_FONT_NAME, 'bold');
         doc.setTextColor(79, 70, 229);
         doc.text("Bilan de qualit\u00e9", pageWidth / 2, 18, { align: 'center' });
 
         doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
+        doc.setFont(PDF_FONT_NAME, 'normal');
         doc.setTextColor(55, 65, 81);
         doc.text("Agent : " + agentName, margin, 30);
         doc.text("Campagne : " + campaignName, margin, 37);
@@ -117,7 +132,7 @@
 
         const headers = hideNotes ? [["Date", "Points cl\u00e9s"]] : [["Date", "Note / 10", "Points cl\u00e9s"]];
         const data = evals.map(function (e) {
-            const comments = (e.fileContent && e.fileContent.commentaire) ? e.fileContent.commentaire : "Pas de commentaire global.";
+            const comments = (e.fileContent && e.fileContent.commentaire) ? sanitizePdfGlyphs(e.fileContent.commentaire) : "Pas de commentaire global.";
             return hideNotes ? [e.date, comments] : [e.date, e.note, comments];
         });
         const emptyRow = hideNotes ? [["—", "Aucune \u00e9valuation"]] : [["—", "—", "Aucune \u00e9valuation"]];
@@ -127,8 +142,9 @@
             head: headers,
             body: data.length ? data : emptyRow,
             theme: 'grid',
-            headStyles: { fillColor: [79, 70, 229], fontSize: 10, fontStyle: 'bold', textColor: [255, 255, 255] },
-            bodyStyles: { fontSize: 9, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.2 },
+            styles: { font: PDF_FONT_NAME },
+            headStyles: { font: PDF_FONT_NAME, fillColor: [79, 70, 229], fontSize: 10, fontStyle: 'bold', textColor: [255, 255, 255] },
+            bodyStyles: { font: PDF_FONT_NAME, fontSize: 9, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.2 },
             columnStyles: hideNotes
                 ? { 0: { cellWidth: 30 }, 1: { cellWidth: 'auto' } }
                 : { 0: { cellWidth: 30 }, 1: { cellWidth: 30, fontStyle: 'bold', halign: 'center' }, 2: { cellWidth: 'auto' } }
@@ -138,14 +154,14 @@
         doc.setFillColor(248, 250, 252);
         doc.roundedRect(margin - 2, finalY - 4, pageWidth - 2 * margin + 4, 8, 1, 1, 'F');
         doc.setFontSize(11);
-        doc.setFont(undefined, 'bold');
+        doc.setFont(PDF_FONT_NAME, 'bold');
         doc.setTextColor(79, 70, 229);
         doc.text("Synth\u00e8se / Plan d'action", margin, finalY + 2);
 
         doc.setFontSize(9);
-        doc.setFont(undefined, 'normal');
+        doc.setFont(PDF_FONT_NAME, 'normal');
         doc.setTextColor(51, 65, 85);
-        const splitComment = doc.splitTextToSize(comment, pageWidth - 2 * margin - 4);
+        const splitComment = doc.splitTextToSize(sanitizePdfGlyphs(comment), pageWidth - 2 * margin - 4);
         const lineH = 5;
         for (let i = 0; i < splitComment.length; i++) {
             doc.text(splitComment[i], margin, finalY + 10 + i * lineH);
@@ -175,7 +191,7 @@
             if (fc.commentaire) {
                 doc.setFontSize(10);
                 doc.setTextColor(60);
-                const commLines = doc.splitTextToSize(fc.commentaire, pageWidth - 2 * margin);
+                const commLines = doc.splitTextToSize(sanitizePdfGlyphs(fc.commentaire), pageWidth - 2 * margin);
                 doc.text(commLines, margin, finalY);
                 finalY += commLines.length * 5 + 8;
             }
@@ -192,21 +208,22 @@
                 for (const item of cat.items || []) {
                     const val = scores[item.id];
                     const noteStr = item.max != null ? (val != null ? val : '-') + "/" + item.max : (val != null ? String(val) : '-');
-                    const label = item.label || item.id || '';
+                    const label = sanitizePdfGlyphs(item.label || item.id || '');
                     const hasHint = !!item.hint;
                     const catCell = firstRowOfCategory
                         ? { content: cat.label || '', rowSpan: rowCount, styles: { fontStyle: 'bold', fillColor: [248, 250, 252], textColor: [55, 65, 81] } }
                         : null;
                     const labelCell = { content: label, styles: { fontStyle: 'bold', textColor: [30, 41, 59] } };
+                    var itemComment = sanitizePdfGlyphs(comments[item.id] || '') || '—';
                     if (hideNotes) {
-                        detailBody.push(catCell !== null ? [catCell, labelCell, comments[item.id] || '—'] : [labelCell, comments[item.id] || '—']);
+                        detailBody.push(catCell !== null ? [catCell, labelCell, itemComment] : [labelCell, itemComment]);
                     } else {
-                        detailBody.push(catCell !== null ? [catCell, labelCell, noteStr, comments[item.id] || '—'] : [labelCell, noteStr, comments[item.id] || '—']);
+                        detailBody.push(catCell !== null ? [catCell, labelCell, noteStr, itemComment] : [labelCell, noteStr, itemComment]);
                     }
                     firstRowOfCategory = false;
                     if (hasHint) {
                         hintRowIndices.push(detailBody.length);
-                        hintTexts.push(item.hint);
+                        hintTexts.push(sanitizePdfGlyphs(item.hint));
                         detailBody.push([{ content: '', colSpan: hintSpan }]);
                     }
                 }
@@ -218,8 +235,9 @@
                 head: detailHeaders,
                 body: detailBody.length ? detailBody : detailEmptyRow,
                 theme: 'grid',
-                headStyles: { fillColor: [79, 70, 229], fontSize: 10, fontStyle: 'bold', textColor: [255, 255, 255] },
-                bodyStyles: { fontSize: 9, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.2 },
+                styles: { font: PDF_FONT_NAME },
+                headStyles: { font: PDF_FONT_NAME, fillColor: [79, 70, 229], fontSize: 10, fontStyle: 'bold', textColor: [255, 255, 255] },
+                bodyStyles: { font: PDF_FONT_NAME, fontSize: 9, textColor: [51, 65, 85], lineColor: [226, 232, 240], lineWidth: 0.2 },
                 columnStyles: hideNotes
                     ? { 0: { cellWidth: 50 }, 1: { cellWidth: 55 }, 2: { cellWidth: 'auto' } }
                     : { 0: { cellWidth: 45 }, 1: { cellWidth: 50 }, 2: { cellWidth: 22, halign: 'center' }, 3: { cellWidth: 'auto' } },
@@ -236,7 +254,7 @@
                         doc.setFillColor(241, 245, 249);
                         doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
                         doc.setFontSize(7);
-                        doc.setFont(undefined, 'italic');
+                        doc.setFont(PDF_FONT_NAME, 'italic');
                         doc.setTextColor(100, 116, 139);
                         const x = data.cell.x + 3;
                         const w = Math.max(10, data.cell.width - 6);
@@ -248,7 +266,7 @@
                             drawY += lineHeight;
                         }
                         doc.setFontSize(9);
-                        doc.setFont(undefined, 'normal');
+                        doc.setFont(PDF_FONT_NAME, 'normal');
                         doc.setTextColor(51, 65, 85);
                     }
                 }
@@ -261,6 +279,7 @@
     function generateReviewPdf(options) {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
+        applyPdfFont(doc);
         const pageWidth = doc.internal.pageSize.width;
         const margin = 16;
         const contentWidth = pageWidth - (2 * margin);
@@ -269,10 +288,10 @@
         const ensurePageSpace = helpers.ensurePageSpace;
         const writeParagraph = helpers.writeParagraph;
         function calculateRequiredSpace(docRef, text, maxWidth, lineHeight = 5) {
-            var safeText = (text == null ? '' : String(text)).trim();
+            var safeText = sanitizePdfGlyphs(text).trim();
             if (!safeText) safeText = 'Non renseigné';
             docRef.setFontSize(10);
-            docRef.setFont(undefined, 'normal');
+            docRef.setFont(PDF_FONT_NAME, 'normal');
             var lines = docRef.splitTextToSize(safeText, maxWidth);
             var totalLines = Math.max(lines.length, 1);
             return totalLines * lineHeight;
@@ -346,13 +365,13 @@
             : 'Non renseignée';
 
         doc.setFontSize(18);
-        doc.setFont(undefined, 'bold');
+        doc.setFont(PDF_FONT_NAME, 'bold');
         doc.setTextColor(79, 70, 229);
         doc.text("Compte-rendu d'entretien", margin, cursor.y);
         cursor.y += 10;
 
         doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
+        doc.setFont(PDF_FONT_NAME, 'normal');
         doc.setTextColor(55, 65, 81);
         ensurePageSpace(cursor, 24);
         doc.text("Agent : " + agentName, margin, cursor.y); cursor.y += 5;
@@ -388,14 +407,14 @@
 
                 ensurePageSpace(cursor, 10);
                 doc.setFontSize(11);
-                doc.setFont(undefined, 'bold');
+                doc.setFont(PDF_FONT_NAME, 'bold');
                 doc.setTextColor(79, 70, 229);
-                doc.text((section.label || ('Section ' + (s + 1))), margin, cursor.y);
+                doc.text(sanitizePdfGlyphs(section.label || ('Section ' + (s + 1))), margin, cursor.y);
                 cursor.y += 6;
 
                 if (fields.length === 0) {
                     doc.setFontSize(10);
-                    doc.setFont(undefined, 'italic');
+                    doc.setFont(PDF_FONT_NAME, 'italic');
                     doc.setTextColor(100, 116, 139);
                     doc.text("Non renseigné", margin + 2, cursor.y);
                     cursor.y += 6;
@@ -408,13 +427,13 @@
                     var value = resolveFieldValue(field, fc);
 
                     doc.setFontSize(10);
-                    doc.setFont(undefined, 'bold');
+                    doc.setFont(PDF_FONT_NAME, 'bold');
                     doc.setTextColor(51, 65, 85);
                     ensurePageSpace(cursor, 6);
-                    doc.text("- " + label, margin + 2, cursor.y);
+                    doc.text("- " + sanitizePdfGlyphs(label), margin + 2, cursor.y);
                     cursor.y += 5;
 
-                    doc.setFont(undefined, 'normal');
+                    doc.setFont(PDF_FONT_NAME, 'normal');
                     doc.setTextColor(30, 41, 59);
                     var printedLines = writeParagraph(cursor, value, contentWidth - 6, 5, 2);
                     if (printedLines === 0) cursor.y += 5;
@@ -436,12 +455,12 @@
                     statsMainTitleDone = true;
                     ensurePageSpace(cursor, 48);
                     doc.setFontSize(11);
-                    doc.setFont(undefined, 'bold');
+                    doc.setFont(PDF_FONT_NAME, 'bold');
                     doc.setTextColor(79, 70, 229);
                     doc.text("Statistiques de production", margin, cursor.y);
                     cursor.y += 7;
                     doc.setFontSize(9);
-                    doc.setFont(undefined, 'normal');
+                    doc.setFont(PDF_FONT_NAME, 'normal');
                     doc.setTextColor(100, 116, 139);
                     doc.text("P\u00e9riode : " + fmtDate(period.eval_start) + " au " + fmtDate(period.eval_end), margin, cursor.y);
                     cursor.y += 6;
@@ -454,7 +473,7 @@
                     placeStatsMainTitle();
                     ensurePageSpace(cursor, 50);
                     doc.setFontSize(9.5);
-                    doc.setFont(undefined, 'bold');
+                    doc.setFont(PDF_FONT_NAME, 'bold');
                     doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques Téléphone (par offre)", margin, cursor.y);
                     cursor.y += 4;
@@ -477,7 +496,7 @@
 
                     if (telRows.length === 0 && !telGlobalRow) {
                         ensurePageSpace(cursor, 6);
-                        doc.setFont(undefined, 'italic');
+                        doc.setFont(PDF_FONT_NAME, 'italic');
                         doc.text("Aucune offre incluse.", margin, cursor.y);
                         cursor.y += 6;
                     } else {
@@ -531,19 +550,21 @@
                             foot: telFoot,
                             showFoot: telFoot.length ? 'lastPage' : 'never',
                             styles: {
+                                font: PDF_FONT_NAME,
                                 fontSize: 6.2,
                                 cellPadding: { top: 1.1, right: 0.7, bottom: 1.1, left: 0.7 },
                                 textColor: 30,
                                 valign: 'middle'
                             },
                             headStyles: {
+                                font: PDF_FONT_NAME,
                                 fillColor: [248, 250, 252],
                                 textColor: 55,
                                 fontStyle: 'bold',
                                 fontSize: 6.1,
                                 overflow: 'linebreak'
                             },
-                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 6.2 },
+                            footStyles: { font: PDF_FONT_NAME, fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 6.2 },
                             columnStyles: {
                                 0: { minCellWidth: 16 },
                                 1: { minCellWidth: 10 },
@@ -579,7 +600,7 @@
                     placeStatsMainTitle();
                     ensurePageSpace(cursor, 45);
                     doc.setFontSize(9.5);
-                    doc.setFont(undefined, 'bold');
+                    doc.setFont(PDF_FONT_NAME, 'bold');
                     doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques Courriels", margin, cursor.y);
                     cursor.y += 4;
@@ -601,8 +622,8 @@
                         tableWidth: contentWidth,
                         head: [[ "Clôture", "Envoi WATT", "Réponses", "AR Qualité", "Transfert", "Env. validation", "Refus" ]],
                         body: courBody,
-                        styles: { fontSize: 8, cellPadding: 1.8, textColor: 30 },
-                        headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                        styles: { font: PDF_FONT_NAME, fontSize: 8, cellPadding: 1.8, textColor: 30 },
+                        headStyles: { font: PDF_FONT_NAME, fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
                         theme: 'grid'
                     });
                     cursor.y = doc.lastAutoTable.finalY + 8;
@@ -615,7 +636,7 @@
                     placeStatsMainTitle();
                     ensurePageSpace(cursor, 45);
                     doc.setFontSize(9.5);
-                    doc.setFont(undefined, 'bold');
+                    doc.setFont(PDF_FONT_NAME, 'bold');
                     doc.setTextColor(71, 85, 105);
                     doc.text("Statistiques WATT (par circuit)", margin, cursor.y);
                     cursor.y += 4;
@@ -634,7 +655,7 @@
                         : null;
                     if (wattRows.length === 0 && !wattGlobalRow) {
                         ensurePageSpace(cursor, 6);
-                        doc.setFont(undefined, 'italic');
+                        doc.setFont(PDF_FONT_NAME, 'italic');
                         doc.text("Aucune ligne incluse.", margin, cursor.y);
                         cursor.y += 6;
                     } else {
@@ -660,9 +681,9 @@
                             body: wattBody,
                             foot: wattFoot,
                             showFoot: wattFoot.length ? 'lastPage' : 'never',
-                            styles: { fontSize: 7, cellPadding: 1.8, textColor: 30 },
-                            headStyles: { fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
-                            footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold' },
+                            styles: { font: PDF_FONT_NAME, fontSize: 7, cellPadding: 1.8, textColor: 30 },
+                            headStyles: { font: PDF_FONT_NAME, fillColor: [248, 250, 252], textColor: 55, fontStyle: 'bold' },
+                            footStyles: { font: PDF_FONT_NAME, fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold' },
                             theme: 'grid',
                             rowPageBreak: 'auto',
                             didDrawPage: function () {}
@@ -677,12 +698,12 @@
                 var analysisRequiredHeight = 5 + 2 + calculateRequiredSpace(doc, statsComment, contentWidth, 5);
                 ensurePageSpace(cursor, analysisRequiredHeight);
                 doc.setFontSize(9.5);
-                doc.setFont(undefined, 'bold');
+                doc.setFont(PDF_FONT_NAME, 'bold');
                 doc.setTextColor(71, 85, 105);
                 doc.text("Analyse des statistiques", margin, cursor.y);
                 cursor.y += 5;
 
-                doc.setFont(undefined, 'normal');
+                doc.setFont(PDF_FONT_NAME, 'normal');
                 doc.setFontSize(10);
                 doc.setTextColor(30, 41, 59);
                 writeParagraph(cursor, statsComment || 'Non renseigné', contentWidth, 5, 2);
@@ -692,12 +713,12 @@
             if (globalComment) {
                 ensurePageSpace(cursor, 10);
                 doc.setFontSize(10);
-                doc.setFont(undefined, 'bold');
+                doc.setFont(PDF_FONT_NAME, 'bold');
                 doc.setTextColor(51, 65, 85);
                 doc.text("Commentaire de l'évaluateur", margin, cursor.y);
                 cursor.y += 5;
 
-                doc.setFont(undefined, 'normal');
+                doc.setFont(PDF_FONT_NAME, 'normal');
                 doc.setTextColor(30, 41, 59);
                 writeParagraph(cursor, globalComment, contentWidth, 5, 2);
                 cursor.y += 4;
@@ -714,13 +735,13 @@
         doc.line(margin, cursor.y, pageWidth - margin, cursor.y);
         cursor.y += 8;
         doc.setFontSize(11);
-        doc.setFont(undefined, 'bold');
+        doc.setFont(PDF_FONT_NAME, 'bold');
         doc.setTextColor(79, 70, 229);
         doc.text("Synth\u00e8se / Plan d'action", margin, cursor.y);
         cursor.y += 6;
 
         doc.setFontSize(10);
-        doc.setFont(undefined, 'normal');
+        doc.setFont(PDF_FONT_NAME, 'normal');
         doc.setTextColor(30, 41, 59);
         writeParagraph(cursor, (comment || 'Non renseigné'), contentWidth, 5, 2);
 
@@ -730,6 +751,10 @@
     function generate(options) {
         if (!window.jspdf || !window.jspdf.jsPDF) {
             console.error('BilanPdf: jsPDF non chargé.');
+            return;
+        }
+        if (!window.HQAppPdfFonts || typeof window.HQAppPdfFonts.register !== 'function') {
+            console.error('BilanPdf: pdfFonts.js non chargé.');
             return;
         }
         var campaignType = (options && options.campaignType === 'review') ? 'review' : 'scoring';
