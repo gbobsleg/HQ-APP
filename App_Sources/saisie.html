@@ -537,7 +537,7 @@
                                             @click="generateStatsAnalysisWithMistral()"
                                             :disabled="!form.stats_snapshot || isGeneratingStatsAnalysisAi"
                                             class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-                                        <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                        <img src="img/mistral-icon.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
                                         <span x-text="isGeneratingStatsAnalysisAi ? 'Génération...' : `Générer une analyse avec l'IA`"></span>
                                     </button>
                                 </div>
@@ -676,7 +676,7 @@
                                     @click="generateEvalCommentWithMistral()"
                                     :disabled="(form.note === 'N/A' ? (Object.keys(form.textResponses || {}).filter(k => (form.textResponses[k]||'').trim() !== '').length === 0 && Object.keys(form.booleanResponses || {}).filter(k => form.booleanResponses[k]).length === 0) : (Object.keys(form.scores || {}).filter(k => form.scores[k] != null && form.scores[k] !== '').length === 0)) || evalCommentGenerating"
                                     class="flex-1 px-4 py-2.5 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-                                <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                <img src="img/mistral-icon.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
                                 <span x-text="evalCommentGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
                             </button>
                         </div>
@@ -726,7 +726,7 @@
                                     x-show="(appConfig.mistralApiKey || '').trim() && !appConfig.mistralDisabled"
                                     :disabled="(bilanForm.evals || []).length === 0 || bilanGenerating"
                                     class="w-full px-4 py-3 rounded-xl font-bold text-sm bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-                                <img src="https://mistral.ai/static/branding/m/m-rainbow.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
+                                <img src="img/mistral-icon.png" alt="" class="w-5 h-5 object-contain shrink-0" role="presentation">
                                 <span x-text="bilanGenerating ? 'Génération...' : 'Générer le commentaire avec l\'IA'"></span>
                             </button>
                         </div>
