@@ -46,27 +46,70 @@
         return payload;
     }
 
+    function lastBilanIsSent(bilans, agentId, agentName) {
+        var list = (bilans || []).filter(function (b) {
+            return (agentId != null && b.agentId === agentId) || (agentName && b.agent === agentName);
+        }).sort(function (a, b) { return (b._timestamp || 0) - (a._timestamp || 0); });
+        return list.length > 0 && !!list[0].sent;
+    }
+
+    function resolveEvalAgentId(e, allAgents, getAgentDisplayName) {
+        if (e && e.agentId != null) return e.agentId;
+        var found = (allAgents || []).filter(function (a) { return getAgentDisplayName(a) === (e && e.agent); })[0];
+        return found ? found.id : null;
+    }
+
     function computeStats(evaluations, options) {
         options = options || {};
         var totalAgents = options.totalAgents || 0;
-        var targetPerAgent = options.targetPerAgent || 3;
         var isFiltered = options.isFiltered || false;
         var allAgents = options.allAgents || [];
         var campaignAssignments = options.campaignAssignments || {};
         var supervisors = options.supervisors || [];
         var getAgentById = options.getAgentById || function () { return null; };
         var getAgentDisplayName = options.getAgentDisplayName || function () { return ''; };
+        var allBilans = options.allBilans || [];
+        var campaignAgentIds = options.campaignAgentIds || [];
 
         var base = totalAgents || allAgents.length;
         var list = evaluations || [];
-        var currentTotal = list.length;
-        var referenceTotal = isFiltered ? currentTotal : base * targetPerAgent;
-        var remaining = isFiltered ? 0 : Math.max(0, referenceTotal - currentTotal);
-        var progressPercent = referenceTotal > 0 ? Math.round((currentTotal / referenceTotal) * 100) : 100;
+        var campaignAgents = allAgents;
+        if (campaignAgentIds.length > 0) {
+            campaignAgents = allAgents.filter(function (a) { return campaignAgentIds.indexOf(a.id) !== -1; });
+        }
 
         var uniqueAgentIds = new Set(list.map(function (e) { return e.agentId; }).filter(Boolean));
         var uniqueAgentNames = new Set(list.map(function (e) { return e.agent; }).filter(Boolean));
         var evaluatedAgents = uniqueAgentIds.size > 0 ? uniqueAgentIds.size : uniqueAgentNames.size;
+
+        var progressAgents = campaignAgents;
+        if (isFiltered) {
+            var seen = {};
+            progressAgents = [];
+            list.forEach(function (e) {
+                var aid = resolveEvalAgentId(e, allAgents, getAgentDisplayName);
+                var key = aid != null ? 'id:' + aid : 'name:' + (e.agent || '');
+                if (seen[key]) return;
+                seen[key] = true;
+                if (aid != null) {
+                    var agent = getAgentById(aid) || allAgents.filter(function (a) { return a.id === aid; })[0];
+                    if (agent) progressAgents.push(agent);
+                    else progressAgents.push({ id: aid, _displayName: e.agent });
+                } else if (e.agent) {
+                    progressAgents.push({ id: null, _displayName: e.agent });
+                }
+            });
+        }
+
+        var currentTotal = 0;
+        progressAgents.forEach(function (agent) {
+            var name = agent._displayName || getAgentDisplayName(agent);
+            if (lastBilanIsSent(allBilans, agent.id, name)) currentTotal++;
+        });
+        var referenceTotal = isFiltered ? progressAgents.length : (campaignAgents.length || base);
+        var remaining = Math.max(0, referenceTotal - currentTotal);
+        var progressPercent = referenceTotal > 0 ? Math.round((currentTotal / referenceTotal) * 100) : 100;
+
         var totalAgentsFinal = isFiltered ? evaluatedAgents : base;
 
         var shortConfig = (options.duration_thresholds && options.duration_thresholds.short) || { min: 3, sec: 0 };
@@ -130,10 +173,11 @@
                 var agentIds = (assign && assign.agent_ids) ? assign.agent_ids : [];
                 var sup = supervisors.filter(function (s) { return String(s.id) === String(supId); })[0];
                 var nom = sup ? sup.nom : 'Superviseur ' + supId;
-                var target = agentIds.length * targetPerAgent;
-                var completed = list.filter(function (e) {
-                    var aid = e.agentId != null ? e.agentId : (allAgents.filter(function (a) { return getAgentDisplayName(a) === e.agent; })[0] || {}).id;
-                    return aid != null && agentIds.indexOf(aid) !== -1;
+                var target = agentIds.length;
+                var completed = agentIds.filter(function (aid) {
+                    var agent = getAgentById(aid) || allAgents.filter(function (a) { return a.id === aid; })[0];
+                    var name = agent ? getAgentDisplayName(agent) : '';
+                    return lastBilanIsSent(allBilans, aid, name);
                 }).length;
                 var percent = target > 0 ? Math.round((completed / target) * 100) : 100;
                 if (target > 0) supervisorProgress.push({ id: supId, nom: nom, completed: completed, target: target, percent: percent });

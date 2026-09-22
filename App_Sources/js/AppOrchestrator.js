@@ -3613,13 +3613,19 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             this.workflow.ready.sort((a,b) => a.name.localeCompare(b.name));
             this.workflow.done.sort((a,b) => a.name.localeCompare(b.name));
 
-            const scopeAgentIds = new Set(agentsInScope.map(a => a.id));
-            const scopeDisplayNames = new Set(agentsInScope.map(a => this.getAgentDisplayName(a)));
-            const scopeEvalsCount = this.allEvaluations.filter(e =>
-                scopeAgentIds.has(e.agentId) || scopeDisplayNames.has(e.agent)
-            ).length;
-            const scopeTargetTotal = agentsInScope.length * targetEvals;
-            this.pilotageProgressPercent = scopeTargetTotal > 0 ? Math.round((scopeEvalsCount / scopeTargetTotal) * 100) : 100;
+            if (this.campaignType === 'review') {
+                this.pilotageProgressPercent = agentsInScope.length > 0
+                    ? Math.round((this.workflow.done.length / agentsInScope.length) * 100)
+                    : 100;
+            } else {
+                const scopeAgentIds = new Set(agentsInScope.map(a => a.id));
+                const scopeDisplayNames = new Set(agentsInScope.map(a => this.getAgentDisplayName(a)));
+                const scopeEvalsCount = this.allEvaluations.filter(e =>
+                    scopeAgentIds.has(e.agentId) || scopeDisplayNames.has(e.agent)
+                ).length;
+                const scopeTargetTotal = agentsInScope.length * targetEvals;
+                this.pilotageProgressPercent = scopeTargetTotal > 0 ? Math.round((scopeEvalsCount / scopeTargetTotal) * 100) : 100;
+            }
         },
 
         pilotageFilterAgents(list) {
@@ -3693,7 +3699,9 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                     allAgents: this.allAgents || [],
                     getAgentById: (id) => this.getAgentById(id),
                     getAgentDisplayName: (a) => this.getAgentDisplayName(a),
-                    duration_thresholds: this.appConfig.duration_thresholds || { short: { min: 3, sec: 0 }, medium: { min: 6, sec: 0 } }
+                    duration_thresholds: this.appConfig.duration_thresholds || { short: { min: 3, sec: 0 }, medium: { min: 6, sec: 0 } },
+                    allBilans: this.allBilans || [],
+                    campaignAgentIds: this.campaignAgentIds || []
                 };
                 this.stats = this.analyticsEngine.computeStats(this.filteredEvaluations, options);
             } else {
@@ -3704,7 +3712,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
 
         resetStats(totalAgents, targetPerAgent) {
             this.stats = this.analyticsEngine
-                ? this.analyticsEngine.computeStats([], { totalAgents: totalAgents || this.allAgents.length, targetPerAgent: targetPerAgent || 3, allAgents: this.allAgents || [] })
+                ? this.analyticsEngine.computeStats([], { totalAgents: totalAgents || this.allAgents.length, targetPerAgent: targetPerAgent || 3, allAgents: this.allAgents || [], allBilans: this.allBilans || [], campaignAgentIds: this.campaignAgentIds || [] })
                 : { moyenne: 0, rubrics: {}, evaluatedAgents: 0, totalAgents: totalAgents || this.allAgents.length, remaining: (totalAgents || this.allAgents.length) * (targetPerAgent || 3), completed: 0, totalEvaluationsTarget: (totalAgents || this.allAgents.length) * (targetPerAgent || 3), progressPercent: 0, supervisorProgress: [], avgDuration: '00:00', durationDistribution: { short: 0, medium: 0, long: 0 }, siteStats: [], offerStats: [], topAgents: [], flopAgents: [], agentList: [] };
         },
 
