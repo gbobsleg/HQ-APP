@@ -419,7 +419,7 @@
         var totals = { nb_pauses_vol: 0, nb_pauses_rona: 0, duree_pauses_vol: 0, duree_pauses_rona: 0, duree_communication: 0, duree_post_appel: 0 };
 
         var html = '<div class="agent360-table-header flex items-center justify-between px-6 py-3 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-50 rounded-t-3xl" role="button" tabindex="0" aria-expanded="true">'
-            + '<p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses \u2013 D\u00e9tail par jour</p>'
+            + '<p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses t\u00e9l\u00e9phonie entrante \u2013 D\u00e9tail par jour</p>'
             + '<span class="agent360-chevron text-slate-400 transition-transform inline-block">\u25bc</span>'
             + '</div>';
         html += '<div class="agent360-table-body overflow-x-auto"><table class="min-w-full w-full text-sm">';

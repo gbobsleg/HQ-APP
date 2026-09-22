@@ -1371,7 +1371,7 @@
                 }
             } catch (e) {
                 console.error('Agent360 table Pauses:', e);
-                pausesTableContainer.innerHTML = '<div class="px-4 py-3 border-b border-gray-100"><p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses \u2013 D\u00e9tail par jour</p></div><div class="text-xs text-rose-500 p-2">Erreur lors de la g\u00e9n\u00e9ration des d\u00e9tails.</div>';
+                pausesTableContainer.innerHTML = '<div class="px-4 py-3 border-b border-gray-100"><p class="text-xs font-black text-slate-400 uppercase tracking-widest">Pauses t\u00e9l\u00e9phonie entrante \u2013 D\u00e9tail par jour</p></div><div class="text-xs text-rose-500 p-2">Erreur lors de la g\u00e9n\u00e9ration des d\u00e9tails.</div>';
                 pausesTableContainer.classList.remove('hidden');
                 pausesTableContainer.classList.add('block');
             }
