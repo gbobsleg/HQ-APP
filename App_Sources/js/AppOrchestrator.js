@@ -327,6 +327,7 @@ function app() {
             } else if (tab === 'agent360') {
                 query = 'tab=agent360';
                 if (store.agent360FilterSiteId) query += '&agent360SiteId=' + encodeURIComponent(store.agent360FilterSiteId);
+                if (store.agent360FilterManagerId) query += '&agent360ManagerId=' + encodeURIComponent(store.agent360FilterManagerId);
                 if (store.selectedAgent360) query += '&agentId=' + encodeURIComponent(store.selectedAgent360);
                 if (store.selectedDateFrom) query += '&dateFrom=' + encodeURIComponent(store.selectedDateFrom);
                 if (store.selectedDateTo) query += '&dateTo=' + encodeURIComponent(store.selectedDateTo);
@@ -1222,12 +1223,24 @@ function app() {
                                     }
                                     var agent360SiteId = params.get('agent360SiteId');
                                     if (agent360SiteId !== null && agent360SiteId !== '') store.agent360FilterSiteId = agent360SiteId;
+                                    var agent360ManagerId = params.get('agent360ManagerId');
+                                    if (agent360ManagerId !== null && agent360ManagerId !== '') store.agent360FilterManagerId = agent360ManagerId;
                                     var agentId = params.get('agentId');
                                     if (agentId !== null && agentId !== '') store.selectedAgent360 = agentId;
-                                    if (store.agent360FilterSiteId && store.selectedAgent360) {
-                                        var ag360 = (this.allAgents || []).find(function (a) { return String(a.id) === String(store.selectedAgent360); });
-                                        if (!ag360 || Number(ag360.siteId) !== Number(store.agent360FilterSiteId)) {
+                                    if (store.agent360FilterSiteId || store.agent360FilterManagerId) {
+                                        var ag360 = store.selectedAgent360
+                                            ? (this.allAgents || []).find(function (a) { return String(a.id) === String(store.selectedAgent360); })
+                                            : null;
+                                        var match360 = window.agentMatches360Filters
+                                            ? window.agentMatches360Filters(ag360, store.agent360FilterSiteId, store.agent360FilterManagerId)
+                                            : (ag360 && (!store.agent360FilterSiteId || Number(ag360.siteId) === Number(store.agent360FilterSiteId)) && (!store.agent360FilterManagerId || Number(ag360.managerId) === Number(store.agent360FilterManagerId)));
+                                        if (store.selectedAgent360 && !match360) {
                                             store.selectedAgent360 = '';
+                                        }
+                                        if (store.agent360FilterManagerId && window.getAgent360FilteredManagers) {
+                                            var mgrs360 = window.getAgent360FilteredManagers(this.managers, this.allAgents, store.agent360FilterSiteId);
+                                            var midOk = (mgrs360 || []).some(function (m) { return Number(m.id) === Number(store.agent360FilterManagerId); });
+                                            if (!midOk) store.agent360FilterManagerId = '';
                                         }
                                     }
                                     var site = params.get('site');

@@ -40,6 +40,7 @@
                 activeTab: 'campagnes',
                 selectedAgent360: '',
                 agent360FilterSiteId: '',
+                agent360FilterManagerId: '',
                 selectedDateFrom: '',
                 selectedDateTo: '',
                 prodPerimeter: 'global',
@@ -236,13 +237,41 @@
             var name = agent && typeof getAgentDisplayName === 'function' ? getAgentDisplayName(agent) : '';
             refreshAgent360Charts(rootHandle, campagnesHandle, agentId, name, allAgents, s.selectedDateFrom || null, s.selectedDateTo || null);
         }
-        function applyAgent360SiteFilter(rootHandle, campagnesHandle, allAgents) {
+        function agentMatches360Filters(ag, sid, mid) {
+            if (!ag) return false;
+            if (sid && Number(ag.siteId) !== Number(sid)) return false;
+            if (mid && Number(ag.managerId) !== Number(mid)) return false;
+            return true;
+        }
+        function getAgent360FilteredManagers(managers, allAgents, siteId) {
+            var sid = siteId;
+            var ids = {};
+            (allAgents || []).forEach(function (ag) {
+                if (!ag || ag.managerId == null || ag.managerId === '') return;
+                if (sid && Number(ag.siteId) !== Number(sid)) return;
+                ids[Number(ag.managerId)] = true;
+            });
+            return (managers || []).filter(function (m) { return m && ids[Number(m.id)]; })
+                .slice()
+                .sort(function (a, b) { return String(a.nom || '').localeCompare(String(b.nom || ''), 'fr', { sensitivity: 'base' }); });
+        }
+        function applyAgent360ListFilters(rootHandle, campagnesHandle, allAgents, managers) {
             var s = window.Alpine && window.Alpine.store('dashboard');
             if (!s) return;
             var sid = s.agent360FilterSiteId;
-            if (s.selectedAgent360 && sid) {
+            var mid = s.agent360FilterManagerId;
+            if (mid) {
+                var managerStillValid = getAgent360FilteredManagers(managers, allAgents, sid).some(function (m) {
+                    return Number(m.id) === Number(mid);
+                });
+                if (!managerStillValid) {
+                    s.agent360FilterManagerId = '';
+                    mid = '';
+                }
+            }
+            if (s.selectedAgent360 && (sid || mid)) {
                 var ag = (allAgents || []).find(function (a) { return String(a.id) === String(s.selectedAgent360); });
-                if (!ag || Number(ag.siteId) !== Number(sid)) {
+                if (!agentMatches360Filters(ag, sid, mid)) {
                     s.selectedAgent360 = '';
                 }
             }
@@ -251,6 +280,12 @@
                 window.HQAppAppInstance.updateDashboardUrl();
             }
         }
+        function applyAgent360SiteFilter(rootHandle, campagnesHandle, allAgents, managers) {
+            applyAgent360ListFilters(rootHandle, campagnesHandle, allAgents, managers);
+        }
+        window.agentMatches360Filters = agentMatches360Filters;
+        window.getAgent360FilteredManagers = getAgent360FilteredManagers;
+        window.applyAgent360ListFilters = applyAgent360ListFilters;
         window.applyAgent360SiteFilter = applyAgent360SiteFilter;
         window.refreshProdFromStore = refreshProdFromStore;
         window.refresh360FromStore = refresh360FromStore;
@@ -524,11 +559,23 @@
                 <div class="w-full">
                     <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Par site</label>
                     <select x-model="$store.dashboard.agent360FilterSiteId"
-                        @change="applyAgent360SiteFilter(rootHandle, campagnesHandle, allAgents)"
+                        @change="applyAgent360ListFilters(rootHandle, campagnesHandle, allAgents, managers)"
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                         <option value="">— Tous les sites —</option>
                         <template x-for="st in (sites || [])" :key="st.id">
                             <option :value="st.id" x-text="st.nom || ('Site ' + st.id)"></option>
+                        </template>
+                    </select>
+                </div>
+                <!-- Par manager -->
+                <div class="w-full">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Par manager</label>
+                    <select x-model="$store.dashboard.agent360FilterManagerId"
+                        @change="applyAgent360ListFilters(rootHandle, campagnesHandle, allAgents, managers)"
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
+                        <option value="">— Tous les managers —</option>
+                        <template x-for="m in getAgent360FilteredManagers(managers, allAgents, $store.dashboard.agent360FilterSiteId)" :key="m.id">
+                            <option :value="m.id" x-text="m.nom || ('Manager ' + m.id)"></option>
                         </template>
                     </select>
                 </div>
@@ -539,7 +586,7 @@
                         @change="refresh360FromStore($event.target.value, rootHandle, campagnesHandle, allAgents); updateDashboardUrl()"
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500">
                         <option value="">— Choisir un agent —</option>
-                        <template x-for="a in (allAgents || []).filter(function (ag) { var sid = $store.dashboard.agent360FilterSiteId; return !sid || Number(ag.siteId) === Number(sid); })" :key="a.id">
+                        <template x-for="a in (allAgents || []).filter(function (ag) { return agentMatches360Filters(ag, $store.dashboard.agent360FilterSiteId, $store.dashboard.agent360FilterManagerId); })" :key="a.id">
                             <option :value="a.id" x-text="getAgentDisplayName(a)"></option>
                         </template>
                     </select>
