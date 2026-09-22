@@ -8,6 +8,7 @@
     const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
     const MODEL = 'mistral-small-latest';
     const MAX_TOKENS = 1024;
+    const TEMPERATURE = 0.3;
 
     function generateComment(prompt, apiKey) {
         if (!prompt || typeof prompt !== 'string') {
@@ -21,7 +22,8 @@
         const body = JSON.stringify({
             model: MODEL,
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: MAX_TOKENS
+            max_tokens: MAX_TOKENS,
+            temperature: TEMPERATURE
         });
 
         return fetch(MISTRAL_URL, {
