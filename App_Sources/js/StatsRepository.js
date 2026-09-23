@@ -560,9 +560,10 @@
      * @param {number|undefined} agentIdFilter
      * @param {string|null} dateFrom - YYYY-MM-DD ou null
      * @param {string|null} dateTo   - YYYY-MM-DD ou null
+     * @param {Array<string>|null} [allowedMonths] - YYYY-MM ; si fourni, n'accepte que ces mois (repli annuel)
      * @returns {Array<object>} DTOs bruts
      */
-    function parseCsvToDtos(csvText, sourceKey, agents, agentIdFilter, dateFrom, dateTo) {
+    function parseCsvToDtos(csvText, sourceKey, agents, agentIdFilter, dateFrom, dateTo, allowedMonths) {
         if (typeof global.Papa === 'undefined') return [];
         agents = agents || (typeof global.LISTE_AGENTS !== 'undefined' ? global.LISTE_AGENTS : []);
         var idNum = (agentIdFilter != null && agentIdFilter !== '')
@@ -606,6 +607,9 @@
             if (rowDate) {
                 if (dateFrom && rowDate < dateFrom) continue;
                 if (dateTo   && rowDate > dateTo)   continue;
+                if (!isDateInAllowedMonths(rowDate, allowedMonths)) continue;
+            } else if (allowedMonths && allowedMonths.length) {
+                continue;
             }
             dto.agentId = agentId;
             delete dto.matricule;
@@ -628,6 +632,91 @@
     function csvFileNameForPeriod(prefix, mois, annee) {
         var moisStr = String(mois).padStart(2, '0');
         return prefix + '_' + annee + '-' + moisStr + '.csv';
+    }
+
+    /**
+     * Nom canonique d'un CSV annuel (ex: telephone_2026.csv).
+     * @param {string} prefix
+     * @param {number|string} annee
+     * @returns {string}
+     */
+    function csvFileNameForYear(prefix, annee) {
+        return prefix + '_' + annee + '.csv';
+    }
+
+    /**
+     * Clé YYYY-MM pour un mois calendaire.
+     * @param {number} annee
+     * @param {number} mois
+     * @returns {string}
+     */
+    function monthKey(annee, mois) {
+        var moisStr = String(mois).padStart(2, '0');
+        return annee + '-' + moisStr;
+    }
+
+    /**
+     * Nom réel dans le listing (comparaison minuscules). À passer à getFileHandle.
+     * @param {Array<{name: string}>} files
+     * @param {string} expectedName
+     * @returns {string|null}
+     */
+    function findFileName(files, expectedName) {
+        var want = String(expectedName || '').toLowerCase();
+        if (!want || !files) return null;
+        for (var i = 0; i < files.length; i++) {
+            if (String(files[i].name).toLowerCase() === want) return files[i].name;
+        }
+        return null;
+    }
+
+    /**
+     * true si rowDate (YYYY-MM-DD) appartient à allowedMonths (YYYY-MM).
+     * Sans liste : tout passe.
+     * @param {string} rowDate
+     * @param {Array<string>|null|undefined} allowedMonths
+     * @returns {boolean}
+     */
+    function isDateInAllowedMonths(rowDate, allowedMonths) {
+        if (!allowedMonths || !allowedMonths.length) return true;
+        if (!rowDate || rowDate.length < 7) return false;
+        return allowedMonths.indexOf(rowDate.slice(0, 7)) !== -1;
+    }
+
+    /**
+     * Mensuels présents + annuel une fois par année, limité aux mois sans fichier mensuel.
+     * @param {Array<{name: string}>} files
+     * @param {string} prefix
+     * @param {Array<{mois: number, annee: number}>} monthsToLoad
+     * @returns {Array<{fileName: string, allowedMonths: Array<string>|null}>}
+     */
+    function resolveCsvReads(files, prefix, monthsToLoad) {
+        var byYear = {};
+        (monthsToLoad || []).forEach(function (period) {
+            var y = period.annee;
+            if (!byYear[y]) byYear[y] = { covered: [], gaps: [] };
+            var realMonthly = findFileName(files, csvFileNameForPeriod(prefix, period.mois, period.annee));
+            var ym = monthKey(period.annee, period.mois);
+            if (realMonthly) {
+                byYear[y].covered.push(realMonthly);
+            } else {
+                byYear[y].gaps.push(ym);
+            }
+        });
+        var reads = [];
+        Object.keys(byYear).forEach(function (y) {
+            var info = byYear[y];
+            info.covered.forEach(function (fileName) {
+                reads.push({ fileName: fileName, allowedMonths: null });
+            });
+            if (info.gaps.length > 0) {
+                var yearlyName = findFileName(files, csvFileNameForYear(prefix, y));
+                if (yearlyName) {
+                    reads.push({ fileName: yearlyName, allowedMonths: info.gaps });
+                }
+            }
+        });
+        return reads;
     }
 
     /**
@@ -695,20 +784,15 @@
                 var rawDtos  = { telephone: [], courriels: [], watt: [] };
                 var promises = [];
 
-                monthsToLoad.forEach(function(period) {
-                    prefixes.forEach(function (prefix) {
-                        var fileName = csvFileNameForPeriod(prefix, period.mois, period.annee);
-                        var found = files.some(function (f) { return f.name === fileName; });
-                        if (!found) return;
-                        // IIFE pour capturer correctement key dans la closure async
-                        (function(key) {
-                            promises.push(
-                                fsManager.readFileText(dataStatsDir, fileName).then(function (text) {
-                                    var dtos = parseCsvToDtos(text, key, agents, agentId, dateFrom, dateTo);
-                                    rawDtos[key] = rawDtos[key].concat(dtos);
-                                }).catch(function () {})
-                            );
-                        })(prefix === 'telephone' ? 'telephone' : (prefix === 'courriels' ? 'courriels' : 'watt'));
+                prefixes.forEach(function (prefix) {
+                    var reads = resolveCsvReads(files, prefix, monthsToLoad);
+                    reads.forEach(function (read) {
+                        promises.push(
+                            fsManager.readFileText(dataStatsDir, read.fileName).then(function (text) {
+                                var dtos = parseCsvToDtos(text, prefix, agents, agentId, dateFrom, dateTo, read.allowedMonths);
+                                rawDtos[prefix] = rawDtos[prefix].concat(dtos);
+                            }).catch(function () {})
+                        );
                     });
                 });
 
@@ -1038,7 +1122,93 @@
     }
 
     /**
-     * Charge et fusionne tous les fichiers planning_YYYY-MM.csv présents dans Data_Stats/.
+     * Clé de dédup planning : agent + jour ISO, sinon agent + mois.
+     * @param {string} agentName
+     * @param {object} entry
+     * @returns {string}
+     */
+    function planningDedupKey(agentName, entry) {
+        var raw = entry && entry.date != null ? String(entry.date) : '';
+        var iso = normalizeDateToISO(raw);
+        if (iso) return String(agentName) + '|' + iso;
+        var ym = raw.length >= 7 && /^\d{4}-\d{2}/.test(raw) ? raw.slice(0, 7) : raw.trim();
+        return String(agentName) + '|' + ym;
+    }
+
+    /**
+     * Lit un CSV planning (UTF-8, repli windows-1252 si remplacement Unicode).
+     * @param {FileSystemDirectoryHandle} dataStatsDir
+     * @param {string} fileName
+     * @returns {Promise<string>}
+     */
+    function readPlanningCsvText(dataStatsDir, fileName) {
+        return dataStatsDir.getFileHandle(fileName).then(function (fileHandle) {
+            return fileHandle.getFile();
+        }).then(function (file) {
+            return (file && typeof file.arrayBuffer === 'function')
+                ? file.arrayBuffer()
+                : Promise.resolve(new ArrayBuffer(0));
+        }).then(function (buffer) {
+            var text = new TextDecoder('utf-8').decode(buffer);
+            if (text.indexOf('\uFFFD') !== -1) {
+                console.warn('[Planning] Fichier ANSI détecté. Bascule sur le décodeur windows-1252.');
+                text = new TextDecoder('windows-1252').decode(buffer);
+            }
+            return text;
+        });
+    }
+
+    /**
+     * Fusionne un parse planning. skipExisting : n'ajoute que les jours absents (repli annuel).
+     * Heures recalculées sur les entrées conservées.
+     * @param {object} aggregated
+     * @param {object} parsed
+     * @param {Object<string, boolean>} seenKeys
+     * @param {boolean} skipExisting
+     */
+    function mergePlanningParsed(aggregated, parsed, seenKeys, skipExisting) {
+        var agents = (parsed && parsed.agents) || {};
+        Object.keys(agents).forEach(function (agentName) {
+            var srcAgent = agents[agentName] || {};
+            var srcStates = srcAgent.states || {};
+            if (!aggregated.agents[agentName]) {
+                aggregated.agents[agentName] = { totalHours: 0, states: {} };
+            }
+            var dstAgent = aggregated.agents[agentName];
+            Object.keys(srcStates).forEach(function (stateName) {
+                var srcState = srcStates[stateName] || {};
+                if (!dstAgent.states[stateName]) {
+                    dstAgent.states[stateName] = { totalHours: 0, entries: [] };
+                }
+                var dstState = dstAgent.states[stateName];
+                var entries = Array.isArray(srcState.entries) ? srcState.entries : [];
+                if (entries.length === 0 && !skipExisting) {
+                    var addHours = typeof srcState.totalHours === 'number' && !isNaN(srcState.totalHours)
+                        ? srcState.totalHours
+                        : 0;
+                    dstState.totalHours += addHours;
+                    dstAgent.totalHours += addHours;
+                    return;
+                }
+                for (var i = 0; i < entries.length; i++) {
+                    var entry = entries[i];
+                    if (!entry || typeof entry !== 'object') continue;
+                    var key = planningDedupKey(agentName, entry);
+                    if (skipExisting && seenKeys[key]) continue;
+                    seenKeys[key] = true;
+                    var hours = typeof entry.durationHours === 'number' && !isNaN(entry.durationHours)
+                        ? entry.durationHours
+                        : 0;
+                    dstState.entries.push(entry);
+                    dstState.totalHours += hours;
+                    dstAgent.totalHours += hours;
+                }
+            });
+        });
+    }
+
+    /**
+     * Charge et fusionne planning_YYYY-MM.csv et, pour les jours absents, planning_YYYY.csv.
      * Retourne une structure { agents: { [agentName]: { totalHours, states: { [etatPlanning]: { totalHours, entries: [] } } } } }.
      * @param {FileSystemDirectoryHandle} rootHandle
      * @returns {Promise<{agents: Object<string, { totalHours: number, states: Object<string, { totalHours: number, entries: Array }> }>}>>}
@@ -1052,72 +1222,41 @@
 
         return fsManager.getDataStatsDir(rootHandle).then(function (dataStatsDir) {
             return fsManager.listEntries(dataStatsDir).then(function (entries) {
-                var planningFiles = entries.filter(function (e) {
-                    return e.kind === 'file' && /^planning_\d{4}-\d{2}\.csv$/i.test(e.name);
+                var monthlyFiles = [];
+                var yearlyFiles = [];
+                entries.forEach(function (e) {
+                    if (e.kind !== 'file') return;
+                    if (/^planning_\d{4}-\d{2}\.csv$/i.test(e.name)) monthlyFiles.push(e);
+                    else if (/^planning_\d{4}\.csv$/i.test(e.name)) yearlyFiles.push(e);
                 });
 
-                console.log('[Planning][StatsRepository] Fichiers trouvés :', planningFiles.map(function (f) { return f.name; }));
-                if (planningFiles.length === 0) return empty;
+                console.log('[Planning][StatsRepository] Fichiers trouvés :', monthlyFiles.concat(yearlyFiles).map(function (f) { return f.name; }));
+                if (monthlyFiles.length === 0 && yearlyFiles.length === 0) return empty;
 
                 var planningSvc = new window.PlanningService();
                 var aggregated = { agents: {} };
+                var seenKeys = {};
 
-                var promises = planningFiles.map(function (f) {
-                    return dataStatsDir.getFileHandle(f.name).then(function (fileHandle) {
-                        return fileHandle.getFile();
-                    }).then(function (file) {
-                        var bufferPromise = (file && typeof file.arrayBuffer === 'function')
-                            ? file.arrayBuffer()
-                            : Promise.resolve(new ArrayBuffer(0));
-                        return bufferPromise;
-                    }).then(function (buffer) {
-                        var text = new TextDecoder('utf-8').decode(buffer);
-                        if (text.indexOf('\uFFFD') !== -1) {
-                            console.warn('[Planning] Fichier ANSI détecté. Bascule sur le décodeur windows-1252.');
-                            text = new TextDecoder('windows-1252').decode(buffer);
-                        }
-                        console.log('[Planning][StatsRepository] Lecture OK fichier :', f.name, 'taille:', text && text.length);
+                function parseAndMerge(fileName, skipExisting) {
+                    return readPlanningCsvText(dataStatsDir, fileName).then(function (text) {
+                        console.log('[Planning][StatsRepository] Lecture OK fichier :', fileName, 'taille:', text && text.length);
                         var parsed = planningSvc.parseCSV(text) || { agents: {} };
-                        var agents = parsed.agents || {};
-
-                        Object.keys(agents).forEach(function (agentName) {
-                            var srcAgent = agents[agentName] || {};
-                            var srcStates = srcAgent.states || {};
-                            if (!aggregated.agents[agentName]) {
-                                aggregated.agents[agentName] = { totalHours: 0, states: {} };
-                            }
-                            var dstAgent = aggregated.agents[agentName];
-                            dstAgent.totalHours += typeof srcAgent.totalHours === 'number' && !isNaN(srcAgent.totalHours)
-                                ? srcAgent.totalHours
-                                : 0;
-
-                            Object.keys(srcStates).forEach(function (stateName) {
-                                var srcState = srcStates[stateName] || {};
-                                if (!dstAgent.states[stateName]) {
-                                    dstAgent.states[stateName] = { totalHours: 0, entries: [] };
-                                }
-                                var dstState = dstAgent.states[stateName];
-                                var addHours = typeof srcState.totalHours === 'number' && !isNaN(srcState.totalHours)
-                                    ? srcState.totalHours
-                                    : 0;
-                                dstState.totalHours += addHours;
-
-                                if (Array.isArray(srcState.entries) && srcState.entries.length > 0) {
-                                    for (var i = 0; i < srcState.entries.length; i++) {
-                                        var entry = srcState.entries[i];
-                                        if (entry && typeof entry === 'object') {
-                                            dstState.entries.push(entry);
-                                        }
-                                    }
-                                }
-                            });
-                        });
+                        mergePlanningParsed(aggregated, parsed, seenKeys, skipExisting);
                     }).catch(function (err) {
-                        console.error('[Planning][StatsRepository] Erreur lecture fichier planning :', f.name, err);
+                        console.error('[Planning][StatsRepository] Erreur lecture fichier planning :', fileName, err);
                     });
+                }
+
+                var monthlyPromises = monthlyFiles.map(function (f) {
+                    return parseAndMerge(f.name, false);
                 });
 
-                return Promise.all(promises).then(function () {
+                return Promise.all(monthlyPromises).then(function () {
+                    var yearlyPromises = yearlyFiles.map(function (f) {
+                        return parseAndMerge(f.name, true);
+                    });
+                    return Promise.all(yearlyPromises);
+                }).then(function () {
                     console.log('[Planning][StatsRepository] Données globales chargées :', aggregated);
                     return aggregated;
                 });
@@ -1199,11 +1338,9 @@
                 var rawRows = [];
                 var promises = [];
 
-                monthsToLoad.forEach(function (period) {
-                    var fileName = csvFileNameForPeriod('pauses', period.mois, period.annee);
-                    if (!files.some(function (f) { return f.name === fileName; })) return;
+                resolveCsvReads(files, 'pauses', monthsToLoad).forEach(function (read) {
                     promises.push(
-                        fsManager.readFileText(dataStatsDir, fileName).then(function (text) {
+                        fsManager.readFileText(dataStatsDir, read.fileName).then(function (text) {
                             if (typeof global.Papa === 'undefined') return;
                             var delimiter = detectDelimiter(text);
                             var result = global.Papa.parse(text, { header: true, delimiter: delimiter });
@@ -1216,8 +1353,13 @@
                                 var agentId = resolveAgentId(dto.matricule, agents);
                                 if (agentId == null) return;
                                 var rowDate = (dto.date || '').trim();
-                                if (rowDate && dateFrom && rowDate < dateFrom) return;
-                                if (rowDate && dateTo   && rowDate > dateTo)   return;
+                                if (rowDate) {
+                                    if (dateFrom && rowDate < dateFrom) return;
+                                    if (dateTo   && rowDate > dateTo)   return;
+                                    if (!isDateInAllowedMonths(rowDate, read.allowedMonths)) return;
+                                } else if (read.allowedMonths && read.allowedMonths.length) {
+                                    return;
+                                }
                                 dto.agentId = agentId;
                                 delete dto.matricule;
                                 rawRows.push(dto);
