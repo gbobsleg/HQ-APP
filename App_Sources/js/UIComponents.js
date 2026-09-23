@@ -353,11 +353,14 @@
             var applyState = function (expanded) {
                 body.classList.toggle('hidden', !expanded);
                 header.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                cont.setAttribute('data-table-expanded', expanded ? 'true' : 'false');
                 var chevron = header.querySelector('.agent360-chevron');
                 if (chevron) chevron.style.transform = expanded ? '' : 'rotate(-90deg)';
             };
 
-            applyState(!!expandedByDefault);
+            var stored = cont.getAttribute('data-table-expanded');
+            var initial = stored === 'true' ? true : stored === 'false' ? false : !!expandedByDefault;
+            applyState(initial);
 
             header.onclick = function () {
                 var expanded = header.getAttribute('aria-expanded') === 'true';
