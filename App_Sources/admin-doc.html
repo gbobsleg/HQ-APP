@@ -27,6 +27,7 @@
                 <li><a href="#admin-referentiels" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Référentiels et paramètres</a></li>
                 <li><a href="#admin-duree" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Durée des communications</a></li>
                 <li><a href="#admin-offres" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Types d'offres</a></li>
+                <li><a href="#admin-planning" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Planning</a></li>
                 <li><a href="#admin-prompt" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Prompt IA</a></li>
                 <li><a href="#admin-mise-a-jour" class="text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:underline">Admin – Paramètres système</a></li>
             </ul>
@@ -99,6 +100,13 @@
         <section id="admin-offres" class="mb-12 scroll-mt-4">
             <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Types d'offres</h2>
             <p class="text-slate-600">Liste des <strong>offres</strong> (Employeurs, TI-AE, CESU, PAJEMPLOI, etc.) utilisées dans les formulaires d'évaluation. Ajoutez ou supprimez des entrées selon vos besoins, puis sauvegardez.</p>
+        </section>
+
+        <section id="admin-planning" class="mb-12 scroll-mt-4">
+            <h2 class="text-xl font-black text-indigo-900 mb-4">Admin – Planning</h2>
+            <p class="text-slate-600 mb-3">Chaque état du planning a un <strong>motif</strong> (texte cherché dans le libellé), un <strong>libellé affiché</strong>, une case <strong>visible</strong> et une case <strong>téléphonie</strong>. La première ligne qui correspond gagne pour l'affichage. Deux motifs avec le même libellé fusionnent leurs heures. L'ordre des lignes se change avec les flèches.</p>
+            <p class="text-slate-600 mb-3">Téléphonie sert aux retards : un créneau compte dès qu'un motif coché est dedans, même dans un libellé combiné. Visible retire l'état du camembert sans l'effacer du fichier.</p>
+            <p class="text-slate-600">Les horaires d'arrivée (matin et après-midi), la tolérance et la marge d'avance sont les mêmes pour tout le plateau. Sauvegardez, puis rechargez le dashboard pour recalculer.</p>
         </section>
 
         <section id="admin-prompt" class="mb-12 scroll-mt-4">

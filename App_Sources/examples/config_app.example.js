@@ -22,6 +22,26 @@ const CONFIG_APP = {
         "CESU",
         "PAJEMPLOI"
     ],
+    "planningRetards": {
+        "toleranceRetardMinutes": 0,
+        "margeAvanceMinutes": 15,
+        "matinDebut": "09:00",
+        "matinFin": "10:00",
+        "apresMidiDebut": "13:00",
+        "apresMidiFin": "14:00"
+    },
+    "planningEtats": [
+        { "match": "REUNION", "label": "RÉUNION", "visible": true, "telephonie": false },
+        { "match": "FORMATION", "label": "FORMATION", "visible": true, "telephonie": false },
+        { "match": "CONGE", "label": "CONGÉS", "visible": true, "telephonie": false },
+        { "match": "MALADIE", "label": "MALADIE", "visible": true, "telephonie": false },
+        { "match": "ABSENCE", "label": "ABSENCE", "visible": true, "telephonie": false },
+        { "match": "CESU", "label": "CESU", "visible": true, "telephonie": false },
+        { "match": "REPAS", "label": "REPAS", "visible": true, "telephonie": false },
+        { "match": "DEJ CO", "label": "REPAS", "visible": true, "telephonie": false },
+        { "match": "RDV", "label": "RDV", "visible": true, "telephonie": false },
+        { "match": "MANDAT", "label": "MANDAT", "visible": true, "telephonie": false }
+    ],
     "mistralApiKey": "",
     "mistralDisabled": false,
     "promptGenerateButtonHidden": false,
