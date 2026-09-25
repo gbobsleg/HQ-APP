@@ -57,6 +57,48 @@
         usePointStyle: true,
         boxWidth: 10
     };
+    var RETARD_MONTH_LABELS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+    function retardIsoShift(iso, days) {
+        var d = new Date(iso + 'T12:00:00');
+        d.setDate(d.getDate() + days);
+        var m = d.getMonth() + 1;
+        var day = d.getDate();
+        return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+    }
+
+    function retardWeekStart(iso) {
+        var d = new Date(iso + 'T12:00:00');
+        var weekday = d.getDay();
+        var back = weekday === 0 ? 6 : weekday - 1;
+        return retardIsoShift(iso, -back);
+    }
+
+    function retardDdMm(iso) {
+        return iso.slice(8, 10) + '/' + iso.slice(5, 7);
+    }
+
+    function retardMax(values) {
+        var max = null;
+        for (var i = 0; i < values.length; i++) {
+            if (typeof values[i] !== 'number' || isNaN(values[i])) continue;
+            if (max == null || values[i] > max) max = values[i];
+        }
+        return max;
+    }
+
+    function markRetardEnConstruction(el) {
+        if (!el || el.querySelector('[data-retard-wip]')) return;
+        el.classList.add('inline-flex', 'items-center', 'gap-1.5');
+        var tip = document.createElement('span');
+        tip.setAttribute('data-retard-wip', '1');
+        tip.className = 'inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black normal-case tracking-normal cursor-help shrink-0';
+        tip.title = 'En construction — indicateur à fiabiliser.';
+        tip.setAttribute('aria-label', tip.title);
+        tip.textContent = '!';
+        tip.addEventListener('click', function (e) { e.stopPropagation(); });
+        el.appendChild(tip);
+    }
 
     function yAxisTicks(callback) {
         var ticks = {
@@ -578,34 +620,83 @@
         var retardRows = retards.rows || [];
         var canvasRetards = getCanvas('agent360-retards-chart', containerEl);
         if (canvasRetards) {
+            var retardCard = canvasRetards.closest ? canvasRetards.closest('.bg-white') : null;
+            var retardHeading = retardCard ? retardCard.querySelector('h3') : null;
+            markRetardEnConstruction(retardHeading);
             clearEmptyState(canvasRetards);
-            if (!retardRows.length) {
+            var retardLabels = [];
+            var retardMatin = [];
+            var retardApres = [];
+            var byDay = {};
+            var hasRetardPoint = false;
+            retardRows.forEach(function (r) {
+                if (!byDay[r.date]) byDay[r.date] = { matin: null, apres: null };
+                var val = r.statut === 'Retard' ? r.ecart : (r.statut === "À l'heure" ? 0 : null);
+                if (typeof val === 'number' && !isNaN(val)) hasRetardPoint = true;
+                if (r.creneau === 'Matin') byDay[r.date].matin = val;
+                else byDay[r.date].apres = val;
+            });
+            var retardTitle = containerEl ? containerEl.querySelector('#agent360-retards-summary') : null;
+            if (!hasRetardPoint) {
+                if (retardTitle) retardTitle.textContent = '';
                 showEmptyState(canvasRetards, 'Aucune donnée', 'Aucun créneau de téléphonie dans les fenêtres d\'arrivée.');
             } else {
-                var retardLabels = [];
-                var retardMatin = [];
-                var retardApres = [];
-                var byDay = {};
-                retardRows.forEach(function (r) {
-                    if (!byDay[r.date]) byDay[r.date] = { matin: null, apres: null };
-                    var val = r.statut === 'Retard' ? r.ecart : (r.statut === "À l'heure" ? 0 : null);
-                    if (r.creneau === 'Matin') byDay[r.date].matin = val;
-                    else byDay[r.date].apres = val;
-                });
-                Object.keys(byDay).sort().forEach(function (d) {
-                    retardLabels.push(d.slice(8, 10) + '/' + d.slice(5, 7));
-                    retardMatin.push(byDay[d].matin);
-                    retardApres.push(byDay[d].apres);
-                });
-                var retardTitle = containerEl.querySelector('#agent360-retards-summary');
+                var dayKeys = Object.keys(byDay).sort();
+                var spanDays = 0;
+                if (dayKeys.length >= 2) {
+                    spanDays = Math.round((new Date(dayKeys[dayKeys.length - 1] + 'T12:00:00') - new Date(dayKeys[0] + 'T12:00:00')) / 86400000);
+                }
+                var weekly = spanDays > 31;
+                var weekMeta = [];
+                if (weekly) {
+                    var byWeek = {};
+                    dayKeys.forEach(function (d) {
+                        var start = retardWeekStart(d);
+                        if (!byWeek[start]) byWeek[start] = { matin: [], apres: [] };
+                        byWeek[start].matin.push({ date: d, val: byDay[d].matin });
+                        byWeek[start].apres.push({ date: d, val: byDay[d].apres });
+                    });
+                    Object.keys(byWeek).sort().forEach(function (start) {
+                        var bucket = byWeek[start];
+                        retardLabels.push(start);
+                        retardMatin.push(retardMax(bucket.matin.map(function (p) { return p.val; })));
+                        retardApres.push(retardMax(bucket.apres.map(function (p) { return p.val; })));
+                        weekMeta.push(bucket);
+                    });
+                } else {
+                    dayKeys.forEach(function (d) {
+                        retardLabels.push(retardDdMm(d));
+                        retardMatin.push(byDay[d].matin);
+                        retardApres.push(byDay[d].apres);
+                    });
+                }
                 if (retardTitle) {
                     var moyenTxt = retards.ecartMoyen == null ? '—' : retards.ecartMoyen + ' min';
-                    retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt;
+                    retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt + (weekly ? ' · max. par semaine' : '');
                 }
+                var retardTooltip = weekly ? {
+                    callbacks: {
+                        title: function (items) {
+                            var start = retardLabels[items[0].dataIndex];
+                            return retardDdMm(start) + ' – ' + retardDdMm(retardIsoShift(start, 6));
+                        },
+                        label: function (ctx) {
+                            var slot = ctx.datasetIndex === 0 ? 'matin' : 'apres';
+                            var points = (weekMeta[ctx.dataIndex] && weekMeta[ctx.dataIndex][slot]) || [];
+                            var lines = [];
+                            points.forEach(function (p) {
+                                if (typeof p.val !== 'number' || isNaN(p.val)) return;
+                                lines.push(ctx.dataset.label + ' ' + retardDdMm(p.date) + ' : ' + p.val + ' min');
+                            });
+                            if (!lines.length) lines.push(ctx.dataset.label + ' : —');
+                            return lines;
+                        }
+                    }
+                } : {};
                 createChart(canvasRetards, {
                     type: 'bar',
                     data: {
-                        labels: retardLabels,
+                        labels: weekly ? retardLabels.map(function () { return ''; }) : retardLabels,
                         datasets: [
                             { label: 'Matin', data: retardMatin, backgroundColor: '#4f46e5', borderRadius: 4 },
                             { label: 'Après-midi', data: retardApres, backgroundColor: '#f97316', borderRadius: 4 }
@@ -615,10 +706,42 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         scales: {
-                            x: { ticks: CHART_X_AXIS_TICKS },
+                            x: {
+                                ticks: weekly ? {
+                                    autoSkip: false,
+                                    maxRotation: 0,
+                                    minRotation: 0,
+                                    color: '#64748b',
+                                    font: { size: 11, weight: '600' },
+                                    callback: function (value, index) {
+                                        var start = retardLabels[index];
+                                        if (!start) return '';
+                                        var prev = index > 0 ? retardLabels[index - 1] : '';
+                                        if (prev && prev.slice(0, 7) === start.slice(0, 7)) return '';
+                                        var month = RETARD_MONTH_LABELS[parseInt(start.slice(5, 7), 10) - 1] || '';
+                                        var showYear = index === 0 || (prev && prev.slice(0, 4) !== start.slice(0, 4));
+                                        return showYear ? month + ' ' + start.slice(0, 4) : month;
+                                    }
+                                } : CHART_X_AXIS_TICKS
+                            },
                             y: { beginAtZero: true, title: { display: true, text: 'Minutes de retard', color: '#94a3b8', font: { size: 11 } } }
                         },
-                        plugins: { legend: { labels: CHART_LEGEND_LABELS } }
+                        plugins: {
+                            legend: { labels: CHART_LEGEND_LABELS },
+                            tooltip: retardTooltip,
+                            datalabels: {
+                                clamp: true,
+                                anchor: 'end',
+                                align: 'top',
+                                color: '#0f172a',
+                                font: { size: 10, weight: 'bold' },
+                                formatter: function (v) { return v; },
+                                display: function (ctx) {
+                                    var v = ctx.dataset.data[ctx.dataIndex];
+                                    return typeof v === 'number' && v > 0 ? 'auto' : false;
+                                }
+                            }
+                        }
                     }
                 });
             }
@@ -630,6 +753,8 @@
                 : '';
             if (retardsHtml) {
                 retardsTableContainer.innerHTML = retardsHtml;
+                var retardTableTitle = retardsTableContainer.querySelector('.agent360-table-header p');
+                markRetardEnConstruction(retardTableTitle);
                 retardsTableContainer.classList.remove('hidden');
                 retardsTableContainer.classList.add('block');
             } else {
