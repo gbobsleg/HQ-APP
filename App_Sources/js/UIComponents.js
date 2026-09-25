@@ -366,6 +366,25 @@
                 var expanded = header.getAttribute('aria-expanded') === 'true';
                 applyState(!expanded);
             };
+
+            var hideFilters = [
+                { input: '.retards-hide-ontime', label: '.retards-hide-ontime-label', statut: 'ontime' },
+                { input: '.retards-hide-absent', label: '.retards-hide-absent-label', statut: 'absent' }
+            ];
+            hideFilters.forEach(function (filter) {
+                var input = cont.querySelector(filter.input);
+                var label = cont.querySelector(filter.label);
+                if (!input || !label) return;
+                var applyHide = function () {
+                    var hide = input.checked;
+                    cont.querySelectorAll('tr[data-retard-statut="' + filter.statut + '"]').forEach(function (tr) {
+                        tr.classList.toggle('hidden', hide);
+                    });
+                };
+                label.addEventListener('click', function (e) { e.stopPropagation(); });
+                input.addEventListener('change', applyHide);
+                applyHide();
+            });
         });
     }
 
@@ -473,6 +492,43 @@
         return html;
     }
 
+    function buildRetardsDetailTableHtml(rows, summary) {
+        if (!rows || !rows.length) return '';
+        var html = '<div class="agent360-table-header flex items-center justify-between gap-4 px-6 py-3 border-b border-gray-100 cursor-pointer select-none hover:bg-gray-50 rounded-t-3xl" role="button" tabindex="0" aria-expanded="true"><p class="text-xs font-black text-slate-400 uppercase tracking-widest">Retards téléphonie – Détail par prise de poste</p><div class="flex items-center gap-4"><label class="retards-hide-ontime-label flex items-center gap-2 text-[11px] font-semibold text-slate-500 normal-case tracking-normal cursor-pointer"><input type="checkbox" class="retards-hide-ontime rounded border-slate-300" checked> Masquer les arrivées à l\'heure</label><label class="retards-hide-absent-label flex items-center gap-2 text-[11px] font-semibold text-slate-500 normal-case tracking-normal cursor-pointer"><input type="checkbox" class="retards-hide-absent rounded border-slate-300" checked> Masquer les données absentes</label><span class="agent360-chevron text-slate-400 transition-transform inline-block">▼</span></div></div>';
+        html += '<div class="agent360-table-body"><table class="min-w-full w-full text-sm">';
+        html += '<thead class="bg-gray-50"><tr>';
+        html += '<th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>';
+        html += '<th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Créneau</th>';
+        html += '<th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Début planifié</th>';
+        html += '<th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">En prêt</th>';
+        html += '<th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Écart</th>';
+        html += '<th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>';
+        html += '</tr></thead><tbody class="divide-y divide-gray-100">';
+        rows.forEach(function (r) {
+            var ecartTxt = r.ecart == null ? '—' : (r.ecart > 0 ? '+' + r.ecart + ' min' : r.ecart + ' min');
+            var onTime = r.statut === "À l'heure";
+            var absent = r.statut === 'Aucun en prêt';
+            var rowStatut = onTime ? 'ontime' : (absent ? 'absent' : 'other');
+            var statutTxt = absent ? 'Donnée absente' : r.statut;
+            html += '<tr class="hover:bg-gray-50' + (onTime || absent ? ' hidden' : '') + '" data-retard-statut="' + rowStatut + '">';
+            html += '<td class="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">' + formatDateFR(r.date) + '</td>';
+            html += '<td class="px-4 py-3 text-gray-700">' + r.creneau + '</td>';
+            html += '<td class="px-4 py-3 text-right text-gray-700">' + (r.debut || '') + '</td>';
+            html += '<td class="px-4 py-3 text-right text-gray-700">' + (r.pret || '—') + '</td>';
+            html += '<td class="px-4 py-3 text-right font-bold text-indigo-600">' + ecartTxt + '</td>';
+            html += '<td class="px-4 py-3 text-gray-800">' + statutTxt + '</td>';
+            html += '</tr>';
+        });
+        var sum = summary || {};
+        var moyen = sum.ecartMoyen == null ? '—' : sum.ecartMoyen + ' min';
+        html += '<tr class="bg-blue-50 font-bold border-t-2 border-blue-200">';
+        html += '<td class="px-4 py-3 text-blue-800" colspan="4">Retards ' + (sum.nbRetards || 0) + ' / ' + (sum.nbCreneaux || rows.length) + ' créneaux</td>';
+        html += '<td class="px-4 py-3 text-right text-blue-800">' + moyen + '</td>';
+        html += '<td class="px-4 py-3 text-blue-800">écart moyen</td>';
+        html += '</tr></tbody></table></div>';
+        return html;
+    }
+
     global.HQApp.UIComponents = {
         formatMmSs: formatMmSs,
         formatDecimalHours: formatDecimalHours,
@@ -482,6 +538,7 @@
         buildWattTableHtml: buildWattTableHtml,
         buildCourrielsDetailTableHtml: buildCourrielsDetailTableHtml,
         buildPausesDetailTableHtml: buildPausesDetailTableHtml,
+        buildRetardsDetailTableHtml: buildRetardsDetailTableHtml,
         buildPlanningTableHtml: buildPlanningTableHtml,
         initCollapsibleTableToggles: initCollapsibleTableToggles
     };

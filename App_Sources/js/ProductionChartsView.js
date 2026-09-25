@@ -495,6 +495,7 @@
         var planningValues = [];
         Object.keys(planningEtats).forEach(function (etat) {
             var node = planningEtats[etat] || {};
+            if (node.visible === false) return;
             var v = typeof node.totalHours === 'number' && !isNaN(node.totalHours) ? node.totalHours : 0;
             if (v > 0) {
                 planningLabels.push(etat);

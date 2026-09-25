@@ -447,7 +447,18 @@
         var planningValues = [];
         Object.keys(planningEtats).forEach(function (etat) {
             var node = planningEtats[etat] || {};
-            var v = typeof node.totalHours === 'number' && !isNaN(node.totalHours) ? node.totalHours : 0;
+            if (node.visible === false) return;
+            var entries = Array.isArray(node.entries) ? node.entries : null;
+            var v = 0;
+            if (entries) {
+                for (var ei = 0; ei < entries.length; ei++) {
+                    var ent = entries[ei];
+                    if (!ent || ent.visible === false) continue;
+                    v += typeof ent.durationHours === 'number' && !isNaN(ent.durationHours) ? ent.durationHours : 0;
+                }
+            } else {
+                v = typeof node.totalHours === 'number' && !isNaN(node.totalHours) ? node.totalHours : 0;
+            }
             if (v > 0) {
                 planningLabels.push(etat);
                 planningValues.push(v);
@@ -560,6 +571,70 @@
             } else {
                 planningTableContainer.classList.add('hidden');
                 planningTableContainer.classList.remove('flex');
+            }
+        }
+
+        var retards = data.retards || { rows: [], nbRetards: 0, nbCreneaux: 0, ecartMoyen: null };
+        var retardRows = retards.rows || [];
+        var canvasRetards = getCanvas('agent360-retards-chart', containerEl);
+        if (canvasRetards) {
+            clearEmptyState(canvasRetards);
+            if (!retardRows.length) {
+                showEmptyState(canvasRetards, 'Aucune donnée', 'Aucun créneau de téléphonie dans les fenêtres d\'arrivée.');
+            } else {
+                var retardLabels = [];
+                var retardMatin = [];
+                var retardApres = [];
+                var byDay = {};
+                retardRows.forEach(function (r) {
+                    if (!byDay[r.date]) byDay[r.date] = { matin: null, apres: null };
+                    var val = r.statut === 'Retard' ? r.ecart : (r.statut === "À l'heure" ? 0 : null);
+                    if (r.creneau === 'Matin') byDay[r.date].matin = val;
+                    else byDay[r.date].apres = val;
+                });
+                Object.keys(byDay).sort().forEach(function (d) {
+                    retardLabels.push(d.slice(8, 10) + '/' + d.slice(5, 7));
+                    retardMatin.push(byDay[d].matin);
+                    retardApres.push(byDay[d].apres);
+                });
+                var retardTitle = containerEl.querySelector('#agent360-retards-summary');
+                if (retardTitle) {
+                    var moyenTxt = retards.ecartMoyen == null ? '—' : retards.ecartMoyen + ' min';
+                    retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt;
+                }
+                createChart(canvasRetards, {
+                    type: 'bar',
+                    data: {
+                        labels: retardLabels,
+                        datasets: [
+                            { label: 'Matin', data: retardMatin, backgroundColor: '#4f46e5', borderRadius: 4 },
+                            { label: 'Après-midi', data: retardApres, backgroundColor: '#f97316', borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { ticks: CHART_X_AXIS_TICKS },
+                            y: { beginAtZero: true, title: { display: true, text: 'Minutes de retard', color: '#94a3b8', font: { size: 11 } } }
+                        },
+                        plugins: { legend: { labels: CHART_LEGEND_LABELS } }
+                    }
+                });
+            }
+        }
+        var retardsTableContainer = containerEl ? containerEl.querySelector('#agent360-retards-table-container') : null;
+        if (retardsTableContainer) {
+            var retardsHtml = UI && typeof UI.buildRetardsDetailTableHtml === 'function'
+                ? UI.buildRetardsDetailTableHtml(retardRows, retards)
+                : '';
+            if (retardsHtml) {
+                retardsTableContainer.innerHTML = retardsHtml;
+                retardsTableContainer.classList.remove('hidden');
+                retardsTableContainer.classList.add('block');
+            } else {
+                retardsTableContainer.classList.add('hidden');
+                retardsTableContainer.classList.remove('block');
             }
         }
 
@@ -1378,7 +1453,7 @@
         }
 
         if (UI && typeof UI.initCollapsibleTableToggles === 'function') {
-            UI.initCollapsibleTableToggles(containerEl, expandedByDefault, ['agent360-tel-table-container', 'agent360-courriels-table-container', 'agent360-watt-table-container', 'agent360-pauses-table-container']);
+            UI.initCollapsibleTableToggles(containerEl, expandedByDefault, ['agent360-tel-table-container', 'agent360-courriels-table-container', 'agent360-watt-table-container', 'agent360-pauses-table-container', 'agent360-retards-table-container']);
         }
     }
 

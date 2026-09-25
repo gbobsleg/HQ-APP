@@ -612,6 +612,73 @@ function app() {
             }
         },
 
+        _defaultPlanningEtats() {
+            return [
+                { match: 'REUNION', label: 'RÉUNION', visible: true, telephonie: false },
+                { match: 'FORMATION', label: 'FORMATION', visible: true, telephonie: false },
+                { match: 'CONGE', label: 'CONGÉS', visible: true, telephonie: false },
+                { match: 'MALADIE', label: 'MALADIE', visible: true, telephonie: false },
+                { match: 'ABSENCE', label: 'ABSENCE', visible: true, telephonie: false },
+                { match: 'CESU', label: 'CESU', visible: true, telephonie: false },
+                { match: 'REPAS', label: 'REPAS', visible: true, telephonie: false },
+                { match: 'DEJ CO', label: 'REPAS', visible: true, telephonie: false },
+                { match: 'RDV', label: 'RDV', visible: true, telephonie: false },
+                { match: 'MANDAT', label: 'MANDAT', visible: true, telephonie: false }
+            ];
+        },
+
+        _defaultPlanningRetards() {
+            return {
+                toleranceRetardMinutes: 0,
+                margeAvanceMinutes: 15,
+                matinDebut: '09:00',
+                matinFin: '10:00',
+                apresMidiDebut: '13:00',
+                apresMidiFin: '14:00'
+            };
+        },
+
+        _normalizePlanningConfig() {
+            if (!this.appConfig.planningRetards || typeof this.appConfig.planningRetards !== 'object') {
+                this.appConfig.planningRetards = this._defaultPlanningRetards();
+            } else {
+                var defaults = this._defaultPlanningRetards();
+                Object.keys(defaults).forEach(function (key) {
+                    if (this.appConfig.planningRetards[key] == null || this.appConfig.planningRetards[key] === '') {
+                        this.appConfig.planningRetards[key] = defaults[key];
+                    }
+                }, this);
+            }
+            if (!Array.isArray(this.appConfig.planningEtats) || this.appConfig.planningEtats.length === 0) {
+                this.appConfig.planningEtats = this._defaultPlanningEtats();
+            }
+        },
+
+        addPlanningEtat(match, label) {
+            var motif = String(match || '').trim();
+            var libelle = String(label || '').trim();
+            if (!motif || !libelle) return;
+            this._normalizePlanningConfig();
+            this.appConfig.planningEtats.push({ match: motif, label: libelle, visible: true, telephonie: false });
+            this.saveAppConfig();
+        },
+
+        removePlanningEtat(index) {
+            if (!confirm('Supprimer cet état ?')) return;
+            this.appConfig.planningEtats.splice(index, 1);
+            this.saveAppConfig();
+        },
+
+        movePlanningEtat(index, delta) {
+            var list = this.appConfig.planningEtats;
+            var next = index + delta;
+            if (!list || next < 0 || next >= list.length) return;
+            var item = list[index];
+            list.splice(index, 1);
+            list.splice(next, 0, item);
+            this.saveAppConfig();
+        },
+
         // --- GETTER : Nécessaire pour l'affichage des agents par équipe ---
         get groupedEvaluations() {
             if (!this.filesInCampaign || this.filesInCampaign.length === 0) return [];
@@ -1063,6 +1130,7 @@ function app() {
             // Migration à la volée : prompts imbriqués (fallback depuis clés plates)
             this._normalizePromptsConfig();
             this._normalizeEmailTemplatesConfig();
+            this._normalizePlanningConfig();
 
             // État initial du formulaire (polymorphe) et état collapsed / pas pour champs scoring
             if (this.evaluationEngine && this.evaluationEngine.getDefaultFormState) {
@@ -1694,19 +1762,29 @@ function app() {
                 (typeof repo.loadPausesStats === 'function'
                     ? repo.loadPausesStats(this.rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
                     : Promise.resolve({ stats: [], detail: [] })
-                ).catch(function () { return { stats: [], detail: [] }; })
+                ).catch(function () { return { stats: [], detail: [] }; }),
+                (typeof repo.loadPretStats === 'function'
+                    ? repo.loadPretStats(this.rootHandle, { agents: agentsRef, agentId: agentId, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+                    : Promise.resolve({ byDate: {} })
+                ).catch(function () { return { byDate: {} }; })
             ]).then(function (results) {
                 var qualiteHistory = results[0] || [];
                 var production     = results[1] || {};
                 var pausesResult   = results[2] || { stats: [], detail: [] };
                 production.pauses       = pausesResult.stats  || [];
                 production.pausesDetail = pausesResult.detail || [];
+                var pretResult = results[3] || { byDate: {} };
+                var retards = { rows: [], nbRetards: 0, nbCreneaux: 0, ecartMoyen: null };
+                if (typeof repo.computeAgentRetards === 'function') {
+                    retards = repo.computeAgentRetards(planningStats.etats || {}, pretResult.byDate || {}) || retards;
+                }
                 view.destroy(container);
                 view.renderAgent360(container, {
                     qualiteHistory: qualiteHistory,
                     production: production,
                     agentId: agentId,
-                    planning: planningStats
+                    planning: planningStats,
+                    retards: retards
                 });
             }).catch(function (err) {
                 console.error("Panel 360 load error:", err);
@@ -4775,6 +4853,7 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
                             if (fromIso && isoDate < fromIso) continue;
                             if (toIso && isoDate > toIso) continue;
                             var h = typeof e.durationHours === 'number' && !isNaN(e.durationHours) ? e.durationHours : 0;
+                            if (e.visible === false) continue;
                             bucket.totalHours += h;
                         }
                     });
@@ -4792,43 +4871,53 @@ Rédige maintenant le commentaire de synthèse en t'appuyant sur l'ensemble des 
             }
 
             var searchNorm = normalizeName(agentName);
-            var targetAgentKey = null;
             var agentKeys = Object.keys(agents);
-            
+            var matchedKeys = [];
+
             for (var k = 0; k < agentKeys.length; k++) {
-                if (normalizeName(agentKeys[k]) === searchNorm) {
-                    targetAgentKey = agentKeys[k];
-                    break;
-                }
+                if (normalizeName(agentKeys[k]) === searchNorm) matchedKeys.push(agentKeys[k]);
             }
 
-            var agent = targetAgentKey ? agents[targetAgentKey] : { states: {} };
             var outEtats = {};
+            var seenEntries = {};
 
-            Object.keys(agent.states || {}).forEach((stateName) => {
-                var state = agent.states[stateName] || {};
-                var entries = Array.isArray(state.entries) ? state.entries : [];
-                var totalHours = 0;
-                var filteredEntries = [];
+            matchedKeys.forEach(function (agentKey) {
+                var agent = agents[agentKey] || { states: {} };
+                Object.keys(agent.states || {}).forEach(function (stateName) {
+                    var state = agent.states[stateName] || {};
+                    var entries = Array.isArray(state.entries) ? state.entries : [];
+                    if (!outEtats[stateName]) {
+                        outEtats[stateName] = {
+                            totalHours: 0,
+                            visible: state.visible !== false,
+                            entries: []
+                        };
+                    }
+                    var bucket = outEtats[stateName];
+                    if (state.visible !== false) bucket.visible = true;
 
-                for (var i = 0; i < entries.length; i++) {
-                    var e = entries[i];
-                    if (!e || typeof e !== 'object') continue;
-                    var isoDate = self._normalizePlanningDateToISO(e.date || '');
-                    if (!isoDate) continue;
-                    if (fromIso && isoDate < fromIso) continue;
-                    if (toIso && isoDate > toIso) continue;
-                    var h = typeof e.durationHours === 'number' && !isNaN(e.durationHours) ? e.durationHours : 0;
-                    totalHours += h;
-                    filteredEntries.push(e);
-                }
-
-                if (filteredEntries.length > 0) {
-                    outEtats[stateName] = { totalHours: totalHours, entries: filteredEntries };
-                }
+                    for (var i = 0; i < entries.length; i++) {
+                        var e = entries[i];
+                        if (!e || typeof e !== 'object') continue;
+                        var isoDate = self._normalizePlanningDateToISO(e.date || '');
+                        if (!isoDate) continue;
+                        if (fromIso && isoDate < fromIso) continue;
+                        if (toIso && isoDate > toIso) continue;
+                        var dedup = isoDate + '|' + (e.start || '') + '|' + (e.end || '') + '|' + (e.etatPlanning || stateName);
+                        if (seenEntries[dedup]) continue;
+                        seenEntries[dedup] = true;
+                        var h = typeof e.durationHours === 'number' && !isNaN(e.durationHours) ? e.durationHours : 0;
+                        bucket.totalHours += h;
+                        bucket.entries.push(e);
+                    }
+                });
             });
 
-            console.log('3. [Vue 360] Cible Agent trouvée :', targetAgentKey);
+            Object.keys(outEtats).forEach(function (stateName) {
+                if (!outEtats[stateName].entries.length) delete outEtats[stateName];
+            });
+
+            console.log('3. [Vue 360] Cibles Agent trouvées :', matchedKeys);
             console.log('4. [Vue 360] Résultat :', outEtats);
             console.groupEnd();
             return { etats: outEtats };

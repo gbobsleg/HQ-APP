@@ -329,33 +329,102 @@ class PlanningService {
    * @returns {string}
    * @private
    */
-  _normalizeStateName(rawName) {
-    if (!rawName) return 'Inconnu';
+  _defaultPlanningEtats() {
+    return [
+      { match: 'REUNION', label: 'RÉUNION', visible: true, telephonie: false },
+      { match: 'FORMATION', label: 'FORMATION', visible: true, telephonie: false },
+      { match: 'CONGE', label: 'CONGÉS', visible: true, telephonie: false },
+      { match: 'MALADIE', label: 'MALADIE', visible: true, telephonie: false },
+      { match: 'ABSENCE', label: 'ABSENCE', visible: true, telephonie: false },
+      { match: 'CESU', label: 'CESU', visible: true, telephonie: false },
+      { match: 'REPAS', label: 'REPAS', visible: true, telephonie: false },
+      { match: 'DEJ CO', label: 'REPAS', visible: true, telephonie: false },
+      { match: 'RDV', label: 'RDV', visible: true, telephonie: false },
+      { match: 'MANDAT', label: 'MANDAT', visible: true, telephonie: false }
+    ];
+  }
 
-    // 1. Suppression de tout ce qui est entre parenthèses
-    let clean = String(rawName)
+  _planningEtatRules() {
+    var cfg = typeof CONFIG_APP !== 'undefined' ? CONFIG_APP.planningEtats : null;
+    if (Array.isArray(cfg) && cfg.length > 0) return cfg;
+    return this._defaultPlanningEtats();
+  }
+
+  _cleanPlanningLabel(rawName) {
+    var clean = String(rawName || '')
       .replace(/\s*\(.*?\)\s*/g, ' ')
       .trim()
       .toUpperCase();
+    if (!clean) return 'INCONNU';
+    return clean;
+  }
 
-    // Normaliser accents pour les tests includes (RÉUNION -> REUNION, etc.)
-    var cleanAscii = clean
+  _planningMatchKey(rawName) {
+    return this._cleanPlanningLabel(rawName)
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
+  }
 
-    // 2. Dictionnaire de mots-clés (Mapping métier)
-    if (cleanAscii.includes('REUNION')) return 'RÉUNION';
-    if (cleanAscii.includes('FORMATION')) return 'FORMATION';
-    if (cleanAscii.includes('CONGE')) return 'CONGÉS';
-    if (cleanAscii.includes('MALADIE')) return 'MALADIE';
-    if (cleanAscii.includes('ABSENCE')) return 'ABSENCE';
-    if (cleanAscii.includes('CESU')) return 'CESU';
-    if (cleanAscii.includes('REPAS') || cleanAscii.includes('DEJ CO')) return 'REPAS';
-    if (cleanAscii.includes('RDV')) return 'RDV';
-    if (cleanAscii.includes('MANDAT')) return 'MANDAT';
+  /**
+   * Mots du libellé : espace, virgule et trait d'union séparent.
+   * La barre oblique reste dans le mot (RG/TI n'est pas TI).
+   * @param {string} rawName
+   * @returns {string[]}
+   */
+  _planningTokens(rawName) {
+    return this._planningMatchKey(rawName).split(/[\s,\-]+/).filter(Boolean);
+  }
 
-    // Si aucun mot clé n'est trouvé, on retourne la chaîne nettoyée (MAJUSCULES)
-    return clean;
+  _motifTokens(motif) {
+    return String(motif || '').trim().toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .split(/[\s,\-]+/)
+      .filter(Boolean);
+  }
+
+  _tokensContain(labelTokens, motifTokens) {
+    if (!motifTokens.length || motifTokens.length > labelTokens.length) return false;
+    var last = labelTokens.length - motifTokens.length;
+    for (var i = 0; i <= last; i++) {
+      var same = true;
+      for (var j = 0; j < motifTokens.length; j++) {
+        if (labelTokens[i + j] !== motifTokens[j]) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Première règle dont les mots du motif sont des mots entiers du libellé : libellé affiché et visibilité.
+   * Téléphonie : vrai dès qu'une règle telephonie correspond, même si ce n'est pas la première.
+   * @param {string} rawName
+   * @returns {{ label: string, visible: boolean, telephonie: boolean }}
+   */
+  _resolvePlanningState(rawName) {
+    var clean = this._cleanPlanningLabel(rawName);
+    var labelTokens = this._planningTokens(rawName);
+    var rules = this._planningEtatRules();
+    var label = clean;
+    var visible = true;
+    var telephonie = false;
+    var labeled = false;
+    for (var i = 0; i < rules.length; i++) {
+      var rule = rules[i] || {};
+      var motifTokens = this._motifTokens(rule.match);
+      if (!this._tokensContain(labelTokens, motifTokens)) continue;
+      if (!labeled) {
+        label = rule.label ? String(rule.label) : clean;
+        visible = rule.visible !== false;
+        labeled = true;
+      }
+      if (rule.telephonie === true) telephonie = true;
+    }
+    return { label: label, visible: visible, telephonie: telephonie };
   }
 
   /**
@@ -385,7 +454,8 @@ class PlanningService {
 
     for (const row of rows) {
       const agentName = row.agent || 'Inconnu';
-      const stateName = this._normalizeStateName(row.etatPlanning);
+      const resolved = this._resolvePlanningState(row.etatPlanning);
+      const stateName = resolved.label;
       const durationHours =
         typeof row.durationHours === 'number' && !Number.isNaN(row.durationHours)
           ? row.durationHours
@@ -404,11 +474,13 @@ class PlanningService {
       if (!agentBucket.states[stateName]) {
         agentBucket.states[stateName] = {
           totalHours: 0,
+          visible: resolved.visible,
           entries: []
         };
       }
 
       const stateBucket = agentBucket.states[stateName];
+      if (resolved.visible) stateBucket.visible = true;
       stateBucket.totalHours += durationHours;
 
       stateBucket.entries.push({
@@ -418,7 +490,9 @@ class PlanningService {
         etatPlanning: row.etatPlanning,
         start: row.start,
         end: row.end,
-        durationHours: durationHours
+        durationHours: durationHours,
+        telephonie: resolved.telephonie,
+        visible: resolved.visible
       });
     }
 

@@ -174,6 +174,13 @@
             if (!element || !window.flatpickr) return;
             var store = storeParam || (window.Alpine && window.Alpine.store && window.Alpine.store('dashboard'));
             if (!store) return;
+            var urlParams = new URLSearchParams(window.location.search);
+            var urlFrom = urlParams.get('dateFrom') || '';
+            var urlTo = urlParams.get('dateTo') || '';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(urlFrom) && /^\d{4}-\d{2}-\d{2}$/.test(urlTo)) {
+                store.selectedDateFrom = urlFrom;
+                store.selectedDateTo = urlTo;
+            }
             var defaultFrom = store.selectedDateFrom || '';
             var defaultTo = store.selectedDateTo || '';
             if (!defaultFrom || !defaultTo) {
@@ -235,7 +242,10 @@
                 return;
             }
             var agent = allAgents && allAgents.find(function(a) { return +a.id === agentId; });
-            var name = agent && typeof getAgentDisplayName === 'function' ? getAgentDisplayName(agent) : '';
+            var nameFn = (window.HQAppAppInstance && typeof window.HQAppAppInstance.getAgentDisplayName === 'function')
+                ? window.HQAppAppInstance.getAgentDisplayName.bind(window.HQAppAppInstance)
+                : (typeof getAgentDisplayName === 'function' ? getAgentDisplayName : null);
+            var name = agent && nameFn ? nameFn(agent) : '';
             refreshAgent360Charts(rootHandle, campagnesHandle, agentId, name, allAgents, s.selectedDateFrom || null, s.selectedDateTo || null);
         }
         function agentMatches360Filters(ag, sid, mid) {
@@ -428,7 +438,11 @@
             Promise.all([
                 repo.loadQualiteHistory(rootHandle, campagnesHandle, agentId, { agentDisplayName: agentDisplayName || '' }),
                 repo.loadProductionStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }),
-                repo.loadPausesStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }).catch(function () { return { stats: [], detail: [] }; })
+                repo.loadPausesStats(rootHandle, { agents: agentsRef, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }).catch(function () { return { stats: [], detail: [] }; }),
+                (typeof repo.loadPretStats === 'function'
+                    ? repo.loadPretStats(rootHandle, { agents: agentsRef, agentId: agentId, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined })
+                    : Promise.resolve({ byDate: {} })
+                ).catch(function () { return { byDate: {} }; })
             ]).then(function (results) {
                 var qualiteHistory = results[0] || [];
                 var production     = results[1] || {};
@@ -444,7 +458,12 @@
                 }
                 production.pauses       = pausesResult.stats  || [];
                 production.pausesDetail = pausesResult.detail || [];
-                view.renderAgent360(container, { qualiteHistory: qualiteHistory, production: production, agentId: agentId, planning: planningStats });
+                var pretResult = results[3] || { byDate: {} };
+                var retards = { rows: [], nbRetards: 0, nbCreneaux: 0, ecartMoyen: null };
+                if (typeof repo.computeAgentRetards === 'function') {
+                    retards = repo.computeAgentRetards(planningStats.etats || {}, pretResult.byDate || {}) || retards;
+                }
+                view.renderAgent360(container, { qualiteHistory: qualiteHistory, production: production, agentId: agentId, planning: planningStats, retards: retards });
             }).catch(function (err) {
                 console.error('[Agent360] Erreur chargement données :', err);
             });
@@ -974,6 +993,17 @@
                         </div>
                         <div id="agent360-planning-table-container" class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex-col h-72 min-h-0 hidden"></div>
                     </div>
+
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest">Retards téléphonie – Arrivée au poste</h3>
+                            <p id="agent360-retards-summary" class="text-[10px] font-bold text-slate-500"></p>
+                        </div>
+                        <div class="flex-1 relative min-h-0">
+                            <canvas id="agent360-retards-chart"></canvas>
+                        </div>
+                    </div>
+                    <div id="agent360-retards-table-container" class="bg-white rounded-3xl shadow-sm border border-slate-100 lg:col-span-2 hidden"></div>
 
                     <!-- Évolution Qualité : dernière position, pleine largeur -->
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col h-72 lg:col-span-2">

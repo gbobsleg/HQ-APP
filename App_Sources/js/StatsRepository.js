@@ -242,7 +242,7 @@
             if (internalKey === 'date') {
                 // Application de l'Early Normalization
                 dto[internalKey] = normalizeDateToISO(val != null ? String(val).trim() : '');
-            } else if (internalKey === 'matricule' || internalKey === 'agentName' || internalKey === 'offre' || internalKey === 'circuit' || internalKey === 'anaisId') {
+            } else if (internalKey === 'matricule' || internalKey === 'agentName' || internalKey === 'offre' || internalKey === 'circuit' || internalKey === 'anaisId' || internalKey === 'debut') {
                 dto[internalKey] = val != null ? String(val).trim() : '';
             } else {
                 dto[internalKey] = safeParseNumber(val);
@@ -1416,12 +1416,271 @@
         });
     }
 
+    function decodeStatsBuffer(buffer) {
+        var bytes = new Uint8Array(buffer || new ArrayBuffer(0));
+        if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+            return new TextDecoder('utf-16le').decode(buffer);
+        }
+        return new TextDecoder('utf-8').decode(buffer);
+    }
+
+    function parseClockToMinutes(value) {
+        if (value == null) return null;
+        var s = String(value).trim();
+        var m = s.match(/^(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        var h = parseInt(m[1], 10);
+        var min = parseInt(m[2], 10);
+        if (isNaN(h) || isNaN(min) || h < 0 || h > 23 || min < 0 || min > 59) return null;
+        return h * 60 + min;
+    }
+
+    function planningDateToIso(raw) {
+        var iso = normalizeDateToISO(raw == null ? '' : String(raw).trim());
+        if (iso) return iso;
+        var s = raw == null ? '' : String(raw).trim();
+        var parts = s.split(/[\/\-]/);
+        if (parts.length !== 3) return '';
+        var d = parseInt(parts[0], 10);
+        var mo = parseInt(parts[1], 10);
+        var y = parts[2];
+        if (isNaN(d) || isNaN(mo) || mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+        if (y.length === 2) {
+            var yy = parseInt(y, 10);
+            if (isNaN(yy)) return '';
+            y = String(2000 + yy);
+        } else if (y.length !== 4 || isNaN(parseInt(y, 10))) {
+            return '';
+        }
+        var ms = mo < 10 ? '0' + mo : String(mo);
+        var ds = d < 10 ? '0' + d : String(d);
+        return y + '-' + ms + '-' + ds;
+    }
+
+    function minutesToHhMm(mins) {
+        if (mins == null || isNaN(mins)) return '';
+        var h = Math.floor(mins / 60);
+        var m = mins % 60;
+        return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+    }
+
+    var COLUMN_MAPPING_PRET = [
+        { production: 'Code de connexion du COS', internal: 'matricule' },
+        { production: "Date/heure de début d'état", internal: 'debut' },
+        { production: "Date/heure de debut d'etat", internal: 'debut' }
+    ];
+
+    /**
+     * « En prêt » de l'agent sur la période. Mensuel d'abord, annuel pour les mois absents.
+     * @returns {Promise<{ byDate: Object<string, number[]> }>}
+     */
+    function loadPretStats(rootHandle, options) {
+        options = options || {};
+        var empty = { byDate: {} };
+        var agents = options.agents || (typeof global.LISTE_AGENTS !== 'undefined' ? global.LISTE_AGENTS : []);
+        var agentId = options.agentId != null ? Number(options.agentId) : NaN;
+        var dateFrom = normalizeDateToISO(options.dateFrom != null ? String(options.dateFrom) : '');
+        var dateTo = normalizeDateToISO(options.dateTo != null ? String(options.dateTo) : '');
+        if (!dateFrom || !dateTo || isNaN(agentId) || !fsManager || !rootHandle) return Promise.resolve(empty);
+
+        var matricule = '';
+        for (var ai = 0; ai < agents.length; ai++) {
+            if (agents[ai] && Number(agents[ai].id) === agentId) {
+                matricule = String(agents[ai].matricule || '').trim();
+                break;
+            }
+        }
+        if (!matricule) return Promise.resolve(empty);
+
+        var fp = dateFrom.split('-');
+        var baseAnnee = parseInt(fp[0], 10);
+        var baseMois = parseInt(fp[1], 10);
+        var tp = dateTo.split('-');
+        var endY = parseInt(tp[0], 10);
+        var endM = parseInt(tp[1], 10);
+        if (isNaN(baseAnnee) || isNaN(baseMois) || isNaN(endY) || isNaN(endM)) return Promise.resolve(empty);
+
+        var monthsToLoad = [];
+        var y = baseAnnee, m = baseMois;
+        while (y < endY || (y === endY && m <= endM)) {
+            monthsToLoad.push({ mois: m, annee: y });
+            if (m === 12) { m = 1; y++; } else { m++; }
+        }
+
+        return fsManager.getDataStatsDir(rootHandle).then(function (dataStatsDir) {
+            return fsManager.listEntries(dataStatsDir).then(function (entries) {
+                var files = entries.filter(function (e) { return e.kind === 'file' && e.name.toLowerCase().endsWith('.csv'); });
+                var byDate = {};
+                var promises = [];
+                resolveCsvReads(files, 'pret', monthsToLoad).forEach(function (read) {
+                    promises.push(
+                        dataStatsDir.getFileHandle(read.fileName).then(function (fh) {
+                            return fh.getFile();
+                        }).then(function (file) {
+                            return file.arrayBuffer();
+                        }).then(function (buffer) {
+                            if (typeof global.Papa === 'undefined') return;
+                            var text = decodeStatsBuffer(buffer);
+                            var delimiter = detectDelimiter(text);
+                            var headerMap = null;
+                            global.Papa.parse(text, {
+                                header: true,
+                                delimiter: delimiter,
+                                step: function (results) {
+                                    var rawRow = results && results.data;
+                                    if (!rawRow || isRowEmpty(rawRow)) return;
+                                    if (!headerMap) {
+                                        headerMap = buildHeaderToInternalMap(COLUMN_MAPPING_PRET, Object.keys(rawRow));
+                                    }
+                                    var dto = rowToDto(rawRow, COLUMN_MAPPING_PRET, headerMap);
+                                    if (String(dto.matricule || '').trim() !== matricule) return;
+                                    var debut = dto.debut != null ? String(dto.debut).trim() : '';
+                                    var space = debut.indexOf(' ');
+                                    var datePart = space === -1 ? debut : debut.slice(0, space);
+                                    var timePart = space === -1 ? '' : debut.slice(space + 1);
+                                    var iso = normalizeDateToISO(datePart);
+                                    if (!iso) return;
+                                    if (dateFrom && iso < dateFrom) return;
+                                    if (dateTo && iso > dateTo) return;
+                                    if (!isDateInAllowedMonths(iso, read.allowedMonths)) return;
+                                    var mins = parseClockToMinutes(timePart);
+                                    if (mins == null) return;
+                                    if (!byDate[iso]) byDate[iso] = [];
+                                    byDate[iso].push(mins);
+                                }
+                            });
+                            text = '';
+                        }).catch(function () {})
+                    );
+                });
+                return Promise.all(promises).then(function () {
+                    return { byDate: byDate };
+                });
+            });
+        }).catch(function () {
+            return empty;
+        });
+    }
+
+    function pickTelephonySlot(slots, winStart, winEnd) {
+        var best = null;
+        for (var i = 0; i < slots.length; i++) {
+            var s = slots[i];
+            if (!s.telephonie) continue;
+            if (s.start < winStart || s.start > winEnd) continue;
+            if (!best || s.start < best.start) best = s;
+        }
+        return best;
+    }
+
+    /**
+     * Deux contrôles par jour : arrivée au poste du matin, puis de l'après-midi.
+     * @param {Object<string, {entries?: Array}>} planningEtats
+     * @param {Object<string, number[]>} pretByDate
+     * @returns {{ rows: Array, nbRetards: number, nbCreneaux: number, ecartMoyen: number|null }}
+     */
+    function computeAgentRetards(planningEtats, pretByDate) {
+        var cfg = (typeof CONFIG_APP !== 'undefined' && CONFIG_APP && CONFIG_APP.planningRetards) || {};
+        var tolerance = parseInt(cfg.toleranceRetardMinutes, 10);
+        var marge = parseInt(cfg.margeAvanceMinutes, 10);
+        if (isNaN(tolerance) || tolerance < 0) tolerance = 0;
+        if (isNaN(marge) || marge < 0) marge = 15;
+        var matinDebut = parseClockToMinutes(cfg.matinDebut || '09:00');
+        var matinFin = parseClockToMinutes(cfg.matinFin || '10:00');
+        var apresDebut = parseClockToMinutes(cfg.apresMidiDebut || '13:00');
+        var apresFin = parseClockToMinutes(cfg.apresMidiFin || '14:00');
+        if (matinDebut == null) matinDebut = 9 * 60;
+        if (matinFin == null) matinFin = 10 * 60;
+        if (apresDebut == null) apresDebut = 13 * 60;
+        if (apresFin == null) apresFin = 14 * 60;
+
+        var byDate = {};
+        var etats = planningEtats || {};
+        Object.keys(etats).forEach(function (stateName) {
+            var entries = (etats[stateName] && etats[stateName].entries) || [];
+            for (var i = 0; i < entries.length; i++) {
+                var e = entries[i];
+                if (!e) continue;
+                var iso = planningDateToIso(e.date);
+                if (!iso) continue;
+                var start = parseClockToMinutes(e.start);
+                var end = parseClockToMinutes(e.end);
+                if (start == null || end == null || end <= start) continue;
+                if (!byDate[iso]) byDate[iso] = [];
+                byDate[iso].push({ start: start, end: end, telephonie: e.telephonie === true });
+            }
+        });
+
+        var rows = [];
+        var nbRetards = 0;
+        var ecartSum = 0;
+        function evalSlot(iso, creneau, slot, slots, isMorning) {
+            var prets = (pretByDate && pretByDate[iso]) || [];
+            var lower;
+            var upper = null;
+            if (isMorning) {
+                lower = slot.start - marge;
+                upper = slot.end;
+            } else {
+                var prevEnd = null;
+                for (var p = 0; p < slots.length; p++) {
+                    if (slots[p].end < slot.start && (prevEnd == null || slots[p].end > prevEnd)) prevEnd = slots[p].end;
+                }
+                lower = prevEnd == null ? slot.start - marge : prevEnd;
+            }
+            var chosen = null;
+            for (var j = 0; j < prets.length; j++) {
+                var mins = prets[j];
+                if (mins < lower) continue;
+                if (upper != null && mins >= upper) continue;
+                if (chosen == null || mins < chosen) chosen = mins;
+            }
+            var statut;
+            var ecart = null;
+            if (chosen == null) {
+                statut = 'Aucun en prêt';
+            } else {
+                ecart = chosen - slot.start;
+                statut = chosen <= slot.start + tolerance ? "À l'heure" : 'Retard';
+                if (statut === 'Retard') {
+                    nbRetards += 1;
+                    ecartSum += ecart;
+                }
+            }
+            rows.push({
+                date: iso,
+                creneau: creneau,
+                debut: minutesToHhMm(slot.start),
+                pret: chosen == null ? '' : minutesToHhMm(chosen),
+                ecart: ecart,
+                statut: statut
+            });
+        }
+
+        Object.keys(byDate).sort().forEach(function (iso) {
+            var slots = byDate[iso];
+            var morning = pickTelephonySlot(slots, matinDebut, matinFin);
+            var afternoon = pickTelephonySlot(slots, apresDebut, apresFin);
+            if (morning) evalSlot(iso, 'Matin', morning, slots, true);
+            if (afternoon) evalSlot(iso, 'Après-midi', afternoon, slots, false);
+        });
+
+        return {
+            rows: rows,
+            nbRetards: nbRetards,
+            nbCreneaux: rows.length,
+            ecartMoyen: nbRetards > 0 ? Math.round(ecartSum / nbRetards) : null
+        };
+    }
+
     var StatsRepository = {
         loadProductionStats: loadProductionStats,
         aggregatePerimeterStats: aggregatePerimeterStats,
         loadQualiteHistory: loadQualiteHistory,
         loadPlanningStats: loadPlanningStats,
-        loadPausesStats: loadPausesStats
+        loadPausesStats: loadPausesStats,
+        loadPretStats: loadPretStats,
+        computeAgentRetards: computeAgentRetards
     };
 
     global.HQApp.StatsRepository = StatsRepository;

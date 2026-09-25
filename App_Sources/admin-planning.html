@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Planning | HQ-APP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="js/version.js"></script>
+    <script src="js/update.js"></script>
+    <script src="js/load-optional-config.js" data-next="doc-modal.js,nav.js,https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="js/GridRepository.js"></script>
+    <script src="js/FileSystemManager.js"></script>
+    <script src="js/ScoringEngine.js"></script>
+    <script src="js/ReviewEngine.js"></script>
+    <script src="js/DashboardChartsView.js"></script>
+    <script src="js/ScrollView.js"></script>
+    <script src="js/EvaluationEngineFactory.js"></script>
+    <script src="js/AnalyticsEngineFactory.js"></script>
+    <script src="js/AppOrchestrator.js"></script>
+    <style>[x-cloak] { display: none !important; } html { scrollbar-gutter: stable; }</style>
+</head>
+<body x-cloak class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
+    <nav class="bg-indigo-900 text-white p-4 shadow-lg" x-data="navComponent" x-html="template"></nav>
+
+    <main :class="isInitializing ? 'opacity-0' : 'opacity-100'" class="transition-opacity duration-300 max-w-4xl mx-auto py-10 px-6">
+        <div class="flex justify-between items-center mb-10">
+            <div class="flex items-center gap-3">
+                <div>
+                    <a href="admin-referentiels.html" class="text-indigo-600 font-bold text-xs uppercase tracking-widest hover:underline">← Retour Référentiels</a>
+                    <h1 class="text-3xl font-black text-indigo-900 mt-2">Planning</h1>
+                </div>
+                <button type="button" @click.prevent="$store.docModal.open = true; $store.docModal.hash = '#admin-planning'" class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 text-xs font-bold transition-colors" title="Aide : Planning">?</button>
+            </div>
+            <button @click="saveAppConfig()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-6 py-3 rounded-2xl shadow-lg transition-all flex items-center gap-2 text-sm">
+                💾 SAUVEGARDER
+            </button>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100 mb-8" x-show="appConfig.planningRetards">
+            <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Arrivée au poste</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Matin début</span>
+                    <input type="time" x-model="appConfig.planningRetards.matinDebut" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Matin fin</span>
+                    <input type="time" x-model="appConfig.planningRetards.matinFin" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Après-midi début</span>
+                    <input type="time" x-model="appConfig.planningRetards.apresMidiDebut" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Après-midi fin</span>
+                    <input type="time" x-model="appConfig.planningRetards.apresMidiFin" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Tolérance (min)</span>
+                    <input type="number" min="0" x-model.number="appConfig.planningRetards.toleranceRetardMinutes" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+                <label class="block text-sm">
+                    <span class="font-bold text-slate-600">Marge d'avance (min)</span>
+                    <input type="number" min="0" x-model.number="appConfig.planningRetards.margeAvanceMinutes" class="mt-1 w-full bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                </label>
+            </div>
+        </div>
+
+        <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">États du planning</h2>
+            <p class="text-sm text-slate-500 mb-4">La première ligne qui contient le motif l'emporte. Le même libellé fusionne les heures. Téléphonie sert au calcul des retards.</p>
+            <div class="flex gap-2 mb-4" x-data="{ motif: '', libelle: '' }">
+                <input type="text" x-model="motif" placeholder="Motif (ex. CESU)" class="flex-1 bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <input type="text" x-model="libelle" placeholder="Libellé affiché" @keydown.enter="addPlanningEtat(motif, libelle); motif=''; libelle=''" class="flex-1 bg-slate-50 border p-3 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <button @click="addPlanningEtat(motif, libelle); motif=''; libelle=''" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl font-black text-sm">Ajouter</button>
+            </div>
+            <div class="space-y-2">
+                <template x-for="(etat, index) in appConfig.planningEtats" :key="index">
+                    <div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <input type="text" x-model="etat.match" class="bg-white border p-2 rounded-lg text-sm font-bold text-slate-700" placeholder="Motif">
+                        <input type="text" x-model="etat.label" class="bg-white border p-2 rounded-lg text-sm text-slate-700" placeholder="Libellé">
+                        <label class="flex items-center gap-2 text-xs font-bold text-slate-600">
+                            <input type="checkbox" x-model="etat.visible"> Visible
+                        </label>
+                        <label class="flex items-center gap-2 text-xs font-bold text-slate-600">
+                            <input type="checkbox" x-model="etat.telephonie"> Téléphonie
+                        </label>
+                        <div class="flex items-center gap-1 justify-end">
+                            <button type="button" @click="movePlanningEtat(index, -1)" class="text-slate-400 hover:text-indigo-600 px-1" title="Monter">↑</button>
+                            <button type="button" @click="movePlanningEtat(index, 1)" class="text-slate-400 hover:text-indigo-600 px-1" title="Descendre">↓</button>
+                            <button type="button" @click="removePlanningEtat(index)" class="text-slate-300 hover:text-rose-500 px-1">✕</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </main>
+</body>
+</html>
