@@ -582,27 +582,85 @@
             if (!retardRows.length) {
                 showEmptyState(canvasRetards, 'Aucune donnée', 'Aucun créneau de téléphonie dans les fenêtres d\'arrivée.');
             } else {
+                function weekMondayIso(iso) {
+                    var p = String(iso || '').split('-');
+                    if (p.length !== 3) return '';
+                    var d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12, 0, 0, 0);
+                    if (isNaN(d.getTime())) return '';
+                    var dow = d.getDay();
+                    d.setDate(d.getDate() + (dow === 0 ? -6 : 1 - dow));
+                    var m = d.getMonth() + 1;
+                    var day = d.getDate();
+                    return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+                }
+                function shortFr(iso) {
+                    return iso.slice(8, 10) + '/' + iso.slice(5, 7);
+                }
+                function shortFrFromDate(d) {
+                    var day = d.getDate();
+                    var m = d.getMonth() + 1;
+                    return (day < 10 ? '0' : '') + day + '/' + (m < 10 ? '0' : '') + m;
+                }
+                function isoWeekNumber(mondayIso) {
+                    var p = mondayIso.split('-');
+                    var monday = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12, 0, 0, 0);
+                    var thursday = new Date(monday.getTime());
+                    thursday.setDate(monday.getDate() + 3);
+                    var yearStart = new Date(thursday.getFullYear(), 0, 1, 12, 0, 0, 0);
+                    return Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
+                }
+                function weekSunday(mondayIso) {
+                    var p = mondayIso.split('-');
+                    var sunday = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12, 0, 0, 0);
+                    sunday.setDate(sunday.getDate() + 6);
+                    return sunday;
+                }
+                var byWeek = {};
+                retardRows.forEach(function (r) {
+                    var monday = weekMondayIso(r.date);
+                    if (!monday) return;
+                    if (!byWeek[monday]) byWeek[monday] = { matin: 0, apres: 0, matinDetails: [], apresDetails: [] };
+                    if (r.statut !== 'Retard' || !(r.ecart > 0)) return;
+                    var isMorning = r.creneau === 'Matin';
+                    var line = { date: r.date, ecart: r.ecart };
+                    if (isMorning) {
+                        byWeek[monday].matin += r.ecart;
+                        byWeek[monday].matinDetails.push(line);
+                    } else {
+                        byWeek[monday].apres += r.ecart;
+                        byWeek[monday].apresDetails.push(line);
+                    }
+                });
+                function detailLines(list) {
+                    return list.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; })
+                        .map(function (d) { return shortFr(d.date) + ' · ' + d.ecart + ' min'; });
+                }
                 var retardLabels = [];
                 var retardMatin = [];
                 var retardApres = [];
-                var byDay = {};
-                retardRows.forEach(function (r) {
-                    if (!byDay[r.date]) byDay[r.date] = { matin: null, apres: null };
-                    var val = r.statut === 'Retard' ? r.ecart : (r.statut === "À l'heure" ? 0 : null);
-                    if (r.creneau === 'Matin') byDay[r.date].matin = val;
-                    else byDay[r.date].apres = val;
-                });
-                Object.keys(byDay).sort().forEach(function (d) {
-                    retardLabels.push(d.slice(8, 10) + '/' + d.slice(5, 7));
-                    retardMatin.push(byDay[d].matin);
-                    retardApres.push(byDay[d].apres);
+                var weekTitles = [];
+                var weekMatinDetails = [];
+                var weekApresDetails = [];
+                Object.keys(byWeek).sort().forEach(function (monday) {
+                    var bucket = byWeek[monday];
+                    if (!(bucket.matin > 0) && !(bucket.apres > 0)) return;
+                    retardLabels.push('S' + isoWeekNumber(monday));
+                    retardMatin.push(bucket.matin > 0 ? bucket.matin : null);
+                    retardApres.push(bucket.apres > 0 ? bucket.apres : null);
+                    var p = monday.split('-');
+                    var mondayDate = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12, 0, 0, 0);
+                    weekTitles.push('S' + isoWeekNumber(monday) + ' (' + shortFrFromDate(mondayDate) + ' – ' + shortFrFromDate(weekSunday(monday)) + ')');
+                    weekMatinDetails.push(detailLines(bucket.matinDetails));
+                    weekApresDetails.push(detailLines(bucket.apresDetails));
                 });
                 var retardTitle = containerEl.querySelector('#agent360-retards-summary');
                 if (retardTitle) {
                     var moyenTxt = retards.ecartMoyen == null ? '—' : retards.ecartMoyen + ' min';
                     retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt;
                 }
-                createChart(canvasRetards, {
+                if (!retardLabels.length) {
+                    showEmptyState(canvasRetards, 'Aucun retard', 'Aucune minute de retard sur la période sélectionnée.');
+                } else createChart(canvasRetards, {
                     type: 'bar',
                     data: {
                         labels: retardLabels,
@@ -618,7 +676,31 @@
                             x: { ticks: CHART_X_AXIS_TICKS },
                             y: { beginAtZero: true, title: { display: true, text: 'Minutes de retard', color: '#94a3b8', font: { size: 11 } } }
                         },
-                        plugins: { legend: { labels: CHART_LEGEND_LABELS } }
+                        plugins: {
+                            legend: { labels: CHART_LEGEND_LABELS },
+                            tooltip: {
+                                filter: function (item) { return item.parsed.y > 0; },
+                                callbacks: {
+                                    title: function (items) {
+                                        return weekTitles[items[0].dataIndex] || '';
+                                    },
+                                    label: function (ctx) {
+                                        return ctx.dataset.label + ' · ' + ctx.parsed.y + ' min';
+                                    },
+                                    afterBody: function (items) {
+                                        var lists = items[0].datasetIndex === 0 ? weekMatinDetails : weekApresDetails;
+                                        return lists[items[0].dataIndex] || [];
+                                    }
+                                }
+                            },
+                            datalabels: {
+                                color: '#0f172a',
+                                font: CHART_DATALABELS_FONT,
+                                anchor: 'end',
+                                align: 'end',
+                                formatter: function (v) { return v > 0 ? String(v) : ''; }
+                            }
+                        }
                     }
                 });
             }
