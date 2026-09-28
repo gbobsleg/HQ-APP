@@ -57,7 +57,6 @@
         usePointStyle: true,
         boxWidth: 10
     };
-    var RETARD_MONTH_LABELS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 
     function retardIsoShift(iso, days) {
         var d = new Date(iso + 'T12:00:00');
@@ -78,13 +77,19 @@
         return iso.slice(8, 10) + '/' + iso.slice(5, 7);
     }
 
-    function retardMax(values) {
-        var max = null;
-        for (var i = 0; i < values.length; i++) {
-            if (typeof values[i] !== 'number' || isNaN(values[i])) continue;
-            if (max == null || values[i] > max) max = values[i];
-        }
-        return max;
+    function retardIsoWeek(mondayIso) {
+        var monday = new Date(mondayIso + 'T12:00:00');
+        var thursday = new Date(monday.getTime());
+        thursday.setDate(monday.getDate() + 3);
+        var yearStart = new Date(thursday.getFullYear(), 0, 1, 12, 0, 0, 0);
+        return Math.ceil((((thursday - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function retardSum(points) {
+        if (!points.length) return null;
+        var total = 0;
+        for (var i = 0; i < points.length; i++) total += points[i].val;
+        return total;
     }
 
     function markRetardEnConstruction(el) {
@@ -648,19 +653,23 @@
                 }
                 var weekly = spanDays > 31;
                 var weekMeta = [];
+                var weekStarts = [];
                 if (weekly) {
                     var byWeek = {};
                     dayKeys.forEach(function (d) {
                         var start = retardWeekStart(d);
                         if (!byWeek[start]) byWeek[start] = { matin: [], apres: [] };
-                        byWeek[start].matin.push({ date: d, val: byDay[d].matin });
-                        byWeek[start].apres.push({ date: d, val: byDay[d].apres });
+                        var matin = byDay[d].matin;
+                        var apres = byDay[d].apres;
+                        if (typeof matin === 'number' && matin > 0) byWeek[start].matin.push({ date: d, val: matin });
+                        if (typeof apres === 'number' && apres > 0) byWeek[start].apres.push({ date: d, val: apres });
                     });
                     Object.keys(byWeek).sort().forEach(function (start) {
                         var bucket = byWeek[start];
-                        retardLabels.push(start);
-                        retardMatin.push(retardMax(bucket.matin.map(function (p) { return p.val; })));
-                        retardApres.push(retardMax(bucket.apres.map(function (p) { return p.val; })));
+                        weekStarts.push(start);
+                        retardLabels.push('S' + retardIsoWeek(start));
+                        retardMatin.push(retardSum(bucket.matin));
+                        retardApres.push(retardSum(bucket.apres));
                         weekMeta.push(bucket);
                     });
                 } else {
@@ -672,31 +681,29 @@
                 }
                 if (retardTitle) {
                     var moyenTxt = retards.ecartMoyen == null ? '—' : retards.ecartMoyen + ' min';
-                    retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt + (weekly ? ' · max. par semaine' : '');
+                    retardTitle.textContent = (retards.nbRetards || 0) + ' / ' + (retards.nbCreneaux || 0) + ' · écart moyen ' + moyenTxt + (weekly ? ' · cumul par semaine' : '');
                 }
                 var retardTooltip = weekly ? {
+                    filter: function (item) { return item.parsed.y > 0; },
                     callbacks: {
                         title: function (items) {
-                            var start = retardLabels[items[0].dataIndex];
-                            return retardDdMm(start) + ' – ' + retardDdMm(retardIsoShift(start, 6));
+                            var start = weekStarts[items[0].dataIndex];
+                            return 'S' + retardIsoWeek(start) + ' (' + retardDdMm(start) + ' – ' + retardDdMm(retardIsoShift(start, 6)) + ')';
                         },
                         label: function (ctx) {
-                            var slot = ctx.datasetIndex === 0 ? 'matin' : 'apres';
-                            var points = (weekMeta[ctx.dataIndex] && weekMeta[ctx.dataIndex][slot]) || [];
-                            var lines = [];
-                            points.forEach(function (p) {
-                                if (typeof p.val !== 'number' || isNaN(p.val)) return;
-                                lines.push(ctx.dataset.label + ' ' + retardDdMm(p.date) + ' : ' + p.val + ' min');
-                            });
-                            if (!lines.length) lines.push(ctx.dataset.label + ' : —');
-                            return lines;
+                            return ctx.dataset.label + ' · ' + ctx.parsed.y + ' min';
+                        },
+                        afterBody: function (items) {
+                            var slot = items[0].datasetIndex === 0 ? 'matin' : 'apres';
+                            var points = (weekMeta[items[0].dataIndex] && weekMeta[items[0].dataIndex][slot]) || [];
+                            return points.map(function (p) { return retardDdMm(p.date) + ' · ' + p.val + ' min'; });
                         }
                     }
                 } : {};
                 createChart(canvasRetards, {
                     type: 'bar',
                     data: {
-                        labels: weekly ? retardLabels.map(function () { return ''; }) : retardLabels,
+                        labels: retardLabels,
                         datasets: [
                             { label: 'Matin', data: retardMatin, backgroundColor: '#4f46e5', borderRadius: 4 },
                             { label: 'Après-midi', data: retardApres, backgroundColor: '#f97316', borderRadius: 4 }
@@ -706,24 +713,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         scales: {
-                            x: {
-                                ticks: weekly ? {
-                                    autoSkip: false,
-                                    maxRotation: 0,
-                                    minRotation: 0,
-                                    color: '#64748b',
-                                    font: { size: 11, weight: '600' },
-                                    callback: function (value, index) {
-                                        var start = retardLabels[index];
-                                        if (!start) return '';
-                                        var prev = index > 0 ? retardLabels[index - 1] : '';
-                                        if (prev && prev.slice(0, 7) === start.slice(0, 7)) return '';
-                                        var month = RETARD_MONTH_LABELS[parseInt(start.slice(5, 7), 10) - 1] || '';
-                                        var showYear = index === 0 || (prev && prev.slice(0, 4) !== start.slice(0, 4));
-                                        return showYear ? month + ' ' + start.slice(0, 4) : month;
-                                    }
-                                } : CHART_X_AXIS_TICKS
-                            },
+                            x: { ticks: CHART_X_AXIS_TICKS },
                             y: { beginAtZero: true, title: { display: true, text: 'Minutes de retard', color: '#94a3b8', font: { size: 11 } } }
                         },
                         plugins: {
